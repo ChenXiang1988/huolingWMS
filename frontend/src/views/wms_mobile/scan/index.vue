@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref } from 'vue'
 import { listTasks } from '@/api/wms_ops'
+import { useScanGun } from '@/composables/useScanGun'
 
 const keyword = ref('')
 const input = ref<any>(null)
@@ -9,6 +10,11 @@ const message = ref('')
 
 const TYPES: Record<string, string> = {
   transfer: '移库', count: '盘点', putaway: '上架', pick: '拣货', check: '复核',
+}
+
+async function refocus() {
+  await nextTick()
+  input.value?.focus()
 }
 
 /** 通用扫码：按库位 ID、任务号或单据 ID 找当前作业员名下的任务。
@@ -32,14 +38,17 @@ async function scan() {
     message.value = `没有匹配「${key}」的进行中任务，请先到「我的任务」领取`
   }
   keyword.value = ''
-  await nextTick()
-  input.value?.focus()
+  await refocus()
 }
 
-onMounted(async () => {
-  await nextTick()
-  input.value?.focus()
+// 焦点被弹窗、切后台之类的事抢走后，扫码字符仍能被全局监听收到，
+// 落到这里补一次录入并重新聚焦，扫 20 次不会因为丢焦点少字符
+const { usingBroadcast } = useScanGun(async (code) => {
+  keyword.value = code
+  await scan()
 })
+
+onMounted(refocus)
 </script>
 
 <template>
@@ -70,6 +79,10 @@ onMounted(async () => {
       这页只做定位，真正的业务动作在对应作业页完成：上架去「上架」、拣货去「拣货」、
       移库与盘点在「库内作业」。
     </div>
+
+    <div class="channel">
+      扫码通道：{{ usingBroadcast ? '广播' : '键盘模拟' }}
+    </div>
   </div>
 </template>
 
@@ -90,4 +103,5 @@ onMounted(async () => {
 .hit-row b { color: #1b2740; font-family: ui-monospace, Menlo, monospace; }
 .miss { padding: 14px; font-size: 13px; color: #d97706; background: #fffdf5; border: 1px solid #f5c976; border-radius: 8px; }
 .note { margin-top: 16px; font-size: 12px; line-height: 1.8; color: #98a4bb; }
+.channel { margin-top: 10px; font-size: 11px; color: #b0bacd; }
 </style>

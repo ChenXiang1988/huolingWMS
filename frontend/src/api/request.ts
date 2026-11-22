@@ -44,7 +44,10 @@ request.interceptors.response.use(
         ElMessage.error('登录已过期，请重新登录')
         // 保留当前 admin_path 前缀（可能被用户修改过，不是默认 /admin）
         const currentPath = window.location.pathname
-        const loginPath = currentPath.replace(/\/[^/]*$/, '/login') || '/admin/login'
+        // 作业端 /m/* 没有自己的登录页，统一回后台登录
+        const loginPath = currentPath.startsWith('/m')
+          ? '/admin/login'
+          : currentPath.replace(/\/[^/]*$/, '/login') || '/admin/login'
         window.location.href = loginPath
       }
     } else {
