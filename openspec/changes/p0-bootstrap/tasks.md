@@ -45,8 +45,11 @@
 
 ## 5. 容器化
 
-- [ ] 5.1 写 `docker/backend.Dockerfile`、`docker/frontend.Dockerfile`、`docker/nginx/default.conf`，前端 `dist` 与 APK 目录挂进 nginx；验证标准：`docker compose up --build` 后浏览器能打开登录页
-      —— 三个文件已就位且 `docker compose config` 通过，**未实际执行 `--build`（构建耗时较长，留待首次部署时验证）**
+- [x] 5.1 写 `docker/backend.Dockerfile`、`docker/frontend.Dockerfile`、`docker/nginx/default.conf`，前端 `dist` 与 APK 目录挂进 nginx；验证标准：`docker compose up --build` 后浏览器能打开登录页
+      —— 实测 `docker compose build` 三镜像全部建成（backend 420MB / web 90MB / mysql 1.07GB，
+      冷构建约 20 分钟，瓶颈在 PyPI 下载）。`docker compose up -d` 后 mysql 健康、backend 与 nginx 起来；
+      `/admin/` 200 且标题为「ApeAdmin 管理后台」、`/owner/` 200 并正确回退到 `/owner/login`、`/health` 200。
+      nginx 的 `/admin/` 与 `/owner/` 各自 try_files 回退，互不兜底
 - [x] 5.2 写根级 `.env.example` 与 `README.md`（依赖版本、两种启动方式、默认账号、不要加 `--workers`）；验证标准：在干净目录按说明能起环境
 
 ## 6. 验收
