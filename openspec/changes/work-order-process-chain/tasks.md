@@ -27,7 +27,7 @@
 ## 5. 校验
 
 - [ ] 5.1 运行 openspec validate work-order-process-chain --strict，验证输出无错误
-- [ ] 5.2 按 spec.md 逐条走 20 个验收场景，验证每条 WHEN 的 THEN 可复现，特别核对跳序拦截与业务失败不推进两条
+- [ ] 5.2 按 spec.md 逐条走 24 个验收场景，验证每条 WHEN 的 THEN 可复现，特别核对跳序拦截与业务失败不推进两条
 
 ## Workflow follow-up
 
