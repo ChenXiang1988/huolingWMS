@@ -1,0 +1,8 @@
+{
+  "name": "wms_returns",
+  "display_name": "逆向",
+  "version": "0.1.0",
+  "description": "破损处置（P2 起）、退货单（P6 起）",
+  "author": "货灵",
+  "dependencies": ["wms_master_data", "wms_inventory"]
+}

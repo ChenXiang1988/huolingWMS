@@ -1,0 +1,8 @@
+{
+  "name": "wms_master_data",
+  "display_name": "主数据",
+  "version": "0.1.0",
+  "description": "仓库配置、货主、库位、商品、合作方、API 凭证与打印模板",
+  "author": "货灵",
+  "dependencies": []
+}

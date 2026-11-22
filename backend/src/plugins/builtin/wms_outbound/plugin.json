@@ -1,0 +1,8 @@
+{
+  "name": "wms_outbound",
+  "display_name": "出库",
+  "version": "0.1.0",
+  "description": "出库订单、FEFO 分配、拣货、复核称重、发运",
+  "author": "货灵",
+  "dependencies": ["wms_master_data", "wms_inventory"]
+}

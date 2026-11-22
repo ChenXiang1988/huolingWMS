@@ -1,0 +1,8 @@
+{
+  "name": "wms_tasking",
+  "display_name": "任务",
+  "version": "0.1.0",
+  "description": "作业任务生成、领取、提交与超时回收",
+  "author": "货灵",
+  "dependencies": ["wms_master_data", "wms_inventory", "wms_internal_ops", "wms_outbound"]
+}

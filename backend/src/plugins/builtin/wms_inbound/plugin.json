@@ -1,0 +1,8 @@
+{
+  "name": "wms_inbound",
+  "display_name": "入库",
+  "version": "0.1.0",
+  "description": "入库预报、服务订单、收货、上架",
+  "author": "货灵",
+  "dependencies": ["wms_master_data", "wms_inventory"]
+}

@@ -1,0 +1,31 @@
+# 开发形态：只有数据库进容器，后端与前端在宿主跑热重载。
+# 启动：docker compose -f docker-compose.dev.yml up -d
+# 宿主端口用 3307，避免与本机已有的 MySQL 抢 3306。
+
+services:
+  mysql:
+    build:
+      context: ./docker/mysql
+      dockerfile: Dockerfile
+    image: huoling-mysql:8.0
+    container_name: huoling-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: huoling_wms
+      MYSQL_USER: huoling
+      MYSQL_PASSWORD: huoling123
+      TZ: Asia/Shanghai
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot123456 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  mysql-data:

@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-22
+# 实现既有规格里的退货入库与货主自助建单，不新增行为约定。
+skip_specs: true

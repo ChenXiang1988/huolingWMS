@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/__pycache__
+**/*.pyc
+backend/.venv
+backend/frontend_dist
+backend/uploads
+backend/*.db
+backend/*.log
+.git
+docs
+openspec

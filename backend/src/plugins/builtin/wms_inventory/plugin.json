@@ -1,0 +1,8 @@
+{
+  "name": "wms_inventory",
+  "display_name": "库存",
+  "version": "0.1.0",
+  "description": "库存台账、库存流水、批次与效期；只有一个记账入口 post_stock",
+  "author": "货灵",
+  "dependencies": ["wms_master_data"]
+}

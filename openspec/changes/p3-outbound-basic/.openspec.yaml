@@ -1,0 +1,4 @@
+﻿schema: spec-driven
+created: 2026-11-22
+# P3 实现 wms/wave-picking 与 wms/stock-ledger 已归档的行为，不新增约定。
+skip_specs: true

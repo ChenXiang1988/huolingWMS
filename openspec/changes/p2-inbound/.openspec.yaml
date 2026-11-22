@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-11-22
+# P2 实现 `wms/domain-map`、`wms/stock-ledger`、`wms/lot-control` 已归档的行为，不新增约定。
+skip_specs: true

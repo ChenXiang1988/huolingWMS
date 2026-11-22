@@ -1,0 +1,71 @@
+# 生产形态：mysql + backend + nginx，一条命令起全栈（验收与部署用）。
+# 开发请用 docker-compose.dev.yml，只起数据库，前后端在宿主热重载。
+
+services:
+  mysql:
+    build:
+      context: ./docker/mysql
+      dockerfile: Dockerfile
+    image: huoling-mysql:8.0
+    container_name: huoling-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: huoling_wms
+      MYSQL_USER: huoling
+      MYSQL_PASSWORD: huoling123
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -proot123456 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: huoling-backend:0.1.0
+    container_name: huoling-backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: 货灵WMS
+      APP_VERSION: 0.1.0
+      DEBUG: "False"
+      DB_TYPE: mysql
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: huoling
+      DB_PASSWORD: huoling123
+      DB_NAME: huoling_wms
+      JWT_SECRET: ${JWT_SECRET:?请在根目录 .env 里设置 JWT_SECRET}
+      CORS_ORIGINS: '["http://localhost:8080"]'
+      MCP_ENABLED: "False"
+      PLUGINS_ENABLED: "True"
+      SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME:-admin}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-Admin@12345}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/setup.lock:/app/setup.lock
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: huoling-web:0.1.0
+    container_name: huoling-web
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  mysql-data:

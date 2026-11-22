@@ -1,0 +1,8 @@
+{
+  "name": "wms_internal_ops",
+  "display_name": "库内作业",
+  "version": "0.1.0",
+  "description": "补货（P4 起）、移库、盘点、留样台账（P5 起）",
+  "author": "货灵",
+  "dependencies": ["wms_master_data", "wms_inventory", "wms_outbound"]
+}
