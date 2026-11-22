@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Optional
 
 from loguru import logger
-from sqlalchemy import bindparam, select, text
+from sqlalchemy import bindparam, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db import SessionLocal
@@ -235,13 +235,18 @@ async def cancel_wave(
                 select(m.WmsPick).where(m.WmsPick.order_id.in_(orders))
             )
         ).scalars().all()
-        for pick in picks:
-            order = (
+        shipped = set(
+            (
                 await db.execute(
-                    select(m.WmsOrder.status).where(m.WmsOrder.id == pick.order_id)
+                    select(m.WmsOrder.id).where(
+                        m.WmsOrder.id.in_(orders),
+                        m.WmsOrder.status == m.ORDER_SHIPPED,
+                    )
                 )
-            ).scalar()
-            if order != m.ORDER_SHIPPED:
+            ).scalars().all()
+        )
+        for pick in picks:
+            if pick.order_id not in shipped:
                 pick.status = "cancelled"
 
         # 未发运订单退回待分配状态，allocation 作废，库存数量始终没动过
@@ -252,13 +257,14 @@ async def cancel_wave(
             ).bindparams(bindparam("ids", expanding=True)),
             {"ids": list(orders)},
         )
-        for oid in orders:
-            o = (
-                await db.execute(select(m.WmsOrder).where(m.WmsOrder.id == oid))
-            ).scalars().first()
-            if o is not None and o.status == m.ORDER_PICKING:
-                o.status = m.ORDER_CONFIRMED
-                o.wave_id = None
+        await db.execute(
+            update(m.WmsOrder)
+            .where(
+                m.WmsOrder.id.in_(orders),
+                m.WmsOrder.status == m.ORDER_PICKING,
+            )
+            .values(status=m.ORDER_CONFIRMED, wave_id=None)
+        )
 
     await db.flush()
     return wave
