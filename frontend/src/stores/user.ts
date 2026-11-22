@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import { login as loginApi, getUserInfo, logout as logoutApi } from '@/api'
-import { resetRouter } from '@/router'
 
 interface UserState {
   token: string | null
@@ -68,7 +67,11 @@ export const useUserStore = defineStore('user', {
       this.menus = []
       this.roles = []
       localStorage.removeItem('apeadmin_token')
-      resetRouter()
+      // 后台路由表只有后台产物用得到。门户产物里静态引入会连带创建第二个
+      // createWebHistory('/admin/')，把门户当前地址改写成 /admin/owner/... 后 404。
+      if (!window.location.pathname.startsWith('/owner')) {
+        void import('@/router').then((m) => m.resetRouter())
+      }
     },
   },
 })

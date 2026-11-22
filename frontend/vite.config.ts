@@ -17,6 +17,13 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const isOwner = mode === 'owner'
   const proxyTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:8000'
+  // 开发与预览共用同一份代理：只配 server 的话，`vite preview` 起来后所有 /api 都是 404
+  const proxy = {
+    '/api': { target: proxyTarget, changeOrigin: true },
+    '/uploads': { target: proxyTarget, changeOrigin: true },
+    '/media': { target: proxyTarget, changeOrigin: true },
+    '/apehub-web': { target: proxyTarget, changeOrigin: true },
+  }
 
   return {
     base: isOwner ? '/owner/' : '/admin/',
@@ -34,12 +41,12 @@ export default defineConfig(({ mode }) => {
     server: {
       host: '127.0.0.1',
       port: isOwner ? 5174 : 5173,
-      proxy: {
-        '/api': { target: proxyTarget, changeOrigin: true },
-        '/uploads': { target: proxyTarget, changeOrigin: true },
-        '/media': { target: proxyTarget, changeOrigin: true },
-        '/apehub-web': { target: proxyTarget, changeOrigin: true },
-      },
+      proxy,
+    },
+    preview: {
+      host: '127.0.0.1',
+      port: isOwner ? 4174 : 4173,
+      proxy,
     },
     build: {
       outDir: isOwner ? 'dist/owner' : 'dist/admin',
