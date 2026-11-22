@@ -13,3 +13,11 @@ export const portalCreateAsn = (data: any) =>
 /** 货主自助建出库订单。请求体里没有 owner_id。 */
 export const portalCreateOrder = (data: any) =>
   request.post('/wms-outbound/portal/orders', data)
+
+/** 本货主的出库订单，分页。owner_id 由服务端按会话注入，前端传不了。 */
+export const portalOrders = (params: any) =>
+  request.get('/wms-outbound/portal/orders', { params })
+
+/** 本货主某一单的明细，别家货主的单返回 404。 */
+export const portalOrderDetail = (id: number) =>
+  request.get(`/wms-outbound/portal/orders/${id}`)

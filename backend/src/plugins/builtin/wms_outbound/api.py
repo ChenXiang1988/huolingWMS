@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.deps import get_current_user, require_permission
@@ -468,3 +468,155 @@ async def portal_create_order(
     data = {"id": order.id, "code": order.code, "owner_id": ctx.owner_id}
     await db.commit()
     return success_response(data=data)
+
+
+@router.get("/portal/orders", summary="货主门户订单列表")
+async def portal_list_orders(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    status: Optional[str] = Query(None),
+    keyword: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+):
+    """只看自己货主的单。
+
+    ``owner_id`` 不接受入参——货主传别家 id 也查不到，越权在参数层面就无从发起。
+    """
+    from src.plugins.builtin.wms_master_data.portal import owner_of_user
+
+    ctx = await owner_of_user(db, user.id)
+    cond = [m.WmsOrder.owner_id == ctx.owner_id]
+    if status:
+        cond.append(m.WmsOrder.status == status)
+    if keyword:
+        cond.append(
+            (m.WmsOrder.code.like(f"%{keyword}%"))
+            | (m.WmsOrder.owner_doc_no.like(f"%{keyword}%"))
+        )
+
+    base = select(m.WmsOrder).where(*cond)
+    total = (
+        await db.execute(select(func.count()).select_from(base.subquery()))
+    ).scalar() or 0
+    rows = (
+        await db.execute(
+            base.order_by(m.WmsOrder.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).scalars().all()
+
+    ids = [r.id for r in rows]
+    agg: dict[int, tuple[int, Decimal]] = {}
+    if ids:
+        for oid, cnt, qty in (
+            await db.execute(
+                text(
+                    "SELECT order_id, COUNT(*), COALESCE(SUM(qty), 0) "
+                    "FROM wms_outbound_order_line "
+                    "WHERE order_id IN :ids GROUP BY order_id"
+                ).bindparams(bindparam("ids", expanding=True)),
+                {"ids": ids},
+            )
+        ).all():
+            agg[int(oid)] = (int(cnt), Decimal(str(qty)))
+
+    return success_response(
+        data={
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "items": [
+                {
+                    "id": r.id,
+                    "code": r.code,
+                    "owner_doc_no": r.owner_doc_no,
+                    "order_type": r.order_type,
+                    "status": r.status,
+                    "receiver": r.receiver,
+                    "carrier_code": r.carrier_code,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                    "line_count": agg.get(r.id, (0, Decimal("0")))[0],
+                    "qty_total": str(agg.get(r.id, (0, Decimal("0")))[1]),
+                }
+                for r in rows
+            ],
+        }
+    )
+
+
+@router.get("/portal/orders/{order_id}", summary="货主门户订单详情")
+async def portal_get_order(
+    order_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+):
+    """别家货主的单返回 404，不用 403——403 等于告诉对方「这单存在」。"""
+    from src.plugins.builtin.wms_master_data.portal import owner_of_user
+
+    ctx = await owner_of_user(db, user.id)
+    order = (
+        await db.execute(
+            select(m.WmsOrder).where(
+                m.WmsOrder.id == order_id,
+                m.WmsOrder.owner_id == ctx.owner_id,
+            )
+        )
+    ).scalars().first()
+    if order is None:
+        raise NotFoundException("订单不存在")
+
+    lines = (
+        await db.execute(
+            text(
+                "SELECT l.sku_id, l.qty, l.allocated_qty, l.lot_id, "
+                "       s.code AS sku_code, s.owner_sku_code, s.name AS sku_name "
+                "FROM wms_outbound_order_line l "
+                "LEFT JOIN wms_master_data_sku s ON s.id = l.sku_id "
+                "WHERE l.order_id = :oid ORDER BY l.id"
+            ),
+            {"oid": order_id},
+        )
+    ).all()
+
+    # 运单号与发运时间都在发运记录上，订单表没有这两列
+    ship = (
+        await db.execute(
+            text(
+                "SELECT tracking_no, shipped_at FROM wms_outbound_shipment "
+                "WHERE order_id = :oid ORDER BY id DESC LIMIT 1"
+            ),
+            {"oid": order_id},
+        )
+    ).first()
+
+    return success_response(
+        data={
+            "id": order.id,
+            "code": order.code,
+            "owner_doc_no": order.owner_doc_no,
+            "order_type": order.order_type,
+            "status": order.status,
+            "receiver": order.receiver,
+            "receiver_phone": order.receiver_phone,
+            "receiver_address": order.receiver_address,
+            "carrier_code": order.carrier_code,
+            "tracking_no": ship.tracking_no if ship else None,
+            "weight_theory": str(order.weight_theory) if order.weight_theory is not None else None,
+            "created_at": order.created_at.isoformat() if order.created_at else None,
+            "shipped_at": ship.shipped_at.isoformat() if ship and ship.shipped_at else None,
+            "lines": [
+                {
+                    "sku_id": r.sku_id,
+                    "sku_code": r.sku_code,
+                    "owner_sku_code": r.owner_sku_code,
+                    "sku_name": r.sku_name,
+                    "qty": str(r.qty),
+                    "allocated_qty": str(r.allocated_qty),
+                    "lot_id": r.lot_id,
+                }
+                for r in lines
+            ],
+        }
+    )

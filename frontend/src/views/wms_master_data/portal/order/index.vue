@@ -1,12 +1,72 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { portalContext, portalCreateOrder, portalSkus } from '@/api/wms_portal'
+import {
+  portalContext,
+  portalCreateOrder,
+  portalOrderDetail,
+  portalOrders,
+  portalSkus,
+} from '@/api/wms_portal'
 
 const ctx = ref<any>(null)
 const skus = ref<any[]>([])
 const busy = ref(false)
 const done = ref<any>(null)
+
+const orders = ref<any[]>([])
+const total = ref(0)
+const page = ref(1)
+const pageSize = 10
+const loading = ref(false)
+const keyword = ref('')
+const detail = ref<any>(null)
+const detailVisible = ref(false)
+
+/** 货主只关心「走到哪一步」，内部状态码不外露。 */
+const STATUS_TEXT: Record<string, string> = {
+  draft: '草稿',
+  confirmed: '待分配',
+  allocated: '已分配',
+  picking: '拣货中',
+  checked: '待发运',
+  shipped: '已发运',
+  cancelled: '已取消',
+}
+const STATUS_TAG: Record<string, any> = {
+  draft: 'info',
+  confirmed: 'info',
+  allocated: 'warning',
+  picking: 'primary',
+  checked: 'warning',
+  shipped: 'success',
+  cancelled: 'danger',
+}
+
+async function fetchOrders() {
+  loading.value = true
+  try {
+    const res: any = await portalOrders({
+      page: page.value,
+      page_size: pageSize,
+      keyword: keyword.value || undefined,
+    })
+    orders.value = res.items || []
+    total.value = res.total || 0
+  } finally {
+    loading.value = false
+  }
+}
+
+async function openDetail(row: any) {
+  detail.value = await portalOrderDetail(row.id)
+  detailVisible.value = true
+}
+
+function onPageChange(p: number) {
+  page.value = p
+  fetchOrders()
+}
 const form = reactive<any>({
   owner_doc_no: '', order_type: 'C',
   receiver: '', receiver_phone: '', receiver_address: '', carrier_code: '',
@@ -50,6 +110,8 @@ async function submit() {
     ElMessage.success(`订单 ${res.code} 已提交`)
     form.owner_doc_no = ''
     form.lines = [{ sku_id: null, qty: '', lot_id: null }]
+    page.value = 1
+    await fetchOrders()
   } catch (e) {
     console.error(e)
   } finally {
@@ -60,14 +122,60 @@ async function submit() {
 onMounted(async () => {
   ctx.value = await portalContext()
   skus.value = (await portalSkus()) as any
+  await fetchOrders()
 })
 </script>
 
 <template>
   <div class="wrap">
     <div class="head">
-      <h2>新建出库订单</h2>
+      <h2>我的出库订单</h2>
       <p v-if="ctx">当前货主：<b>{{ ctx.owner_name }}</b>（#{{ ctx.owner_id }}）</p>
+    </div>
+
+    <div class="toolbar">
+      <el-input v-model="keyword" placeholder="按仓库单号或货主单号搜索" clearable
+                style="width: 260px" @keyup.enter="page = 1; fetchOrders()" />
+      <el-button @click="page = 1; fetchOrders()">查询</el-button>
+      <span class="hint">点任意一行看明细</span>
+    </div>
+
+    <el-table :data="orders" v-loading="loading" border size="small"
+              style="cursor: pointer" @row-click="openDetail">
+      <el-table-column prop="code" label="仓库单号" width="110" />
+      <el-table-column prop="owner_doc_no" label="货主单号" min-width="150" show-overflow-tooltip />
+      <el-table-column label="类型" width="80">
+        <template #default="{ row }">{{ row.order_type === 'B' ? 'B 端' : 'C 端' }}</template>
+      </el-table-column>
+      <el-table-column label="件数" width="80">
+        <template #default="{ row }">{{ Number(row.qty_total) }}</template>
+      </el-table-column>
+      <el-table-column label="状态" width="100">
+        <template #default="{ row }">
+          <el-tag size="small" :type="STATUS_TAG[row.status] || 'info'">
+            {{ STATUS_TEXT[row.status] || row.status }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="receiver" label="收件人" width="110" show-overflow-tooltip />
+      <el-table-column label="下单时间" width="150">
+        <template #default="{ row }">
+          {{ (row.created_at || '').replace('T', ' ').slice(0, 16) }}
+        </template>
+      </el-table-column>
+      <template #empty>
+        <span class="hint">还没有订单，下面填一张试试</span>
+      </template>
+    </el-table>
+
+    <div class="pager">
+      <el-pagination layout="prev, pager, next, total" :total="total"
+                     :page-size="pageSize" :current-page="page"
+                     @current-change="onPageChange" />
+    </div>
+
+    <div class="head" style="margin-top: 28px">
+      <h2>新建出库订单</h2>
     </div>
 
     <el-alert v-if="ctx && !ctx.can_create" type="warning" :closable="false" show-icon
@@ -129,12 +237,66 @@ onMounted(async () => {
       <span class="hint">分配只锁定量，发运时才真正扣减库存。</span>
     </div>
   </div>
+
+  <el-drawer v-model="detailVisible" title="订单详情" size="520px">
+    <template v-if="detail">
+      <div class="d-head">
+        <div>
+          <div class="d-code">{{ detail.code }}</div>
+          <div class="hint">货主单号 {{ detail.owner_doc_no }}</div>
+        </div>
+        <el-tag :type="STATUS_TAG[detail.status] || 'info'">
+          {{ STATUS_TEXT[detail.status] || detail.status }}
+        </el-tag>
+      </div>
+
+      <el-descriptions :column="1" border size="small" style="margin: 16px 0">
+        <el-descriptions-item label="订单类型">
+          {{ detail.order_type === 'B' ? 'B 端大货' : 'C 端电商' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="收件人">
+          {{ detail.receiver || '—' }} {{ detail.receiver_phone || '' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="收货地址">{{ detail.receiver_address || '—' }}</el-descriptions-item>
+        <el-descriptions-item label="承运商 / 运单号">
+          {{ detail.carrier_code || '—' }} / {{ detail.tracking_no || '未出单' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="下单时间">
+          {{ (detail.created_at || '').replace('T', ' ').slice(0, 16) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="发运时间">
+          {{ detail.shipped_at ? detail.shipped_at.replace('T', ' ').slice(0, 16) : '—' }}
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <el-table :data="detail.lines" border size="small">
+        <el-table-column label="商品" min-width="160">
+          <template #default="{ row }">
+            {{ row.owner_sku_code }} {{ row.sku_name }}
+          </template>
+        </el-table-column>
+        <el-table-column label="数量" width="80">
+          <template #default="{ row }">{{ Number(row.qty) }}</template>
+        </el-table-column>
+        <el-table-column label="已分配" width="90">
+          <template #default="{ row }">{{ Number(row.allocated_qty) }}</template>
+        </el-table-column>
+        <el-table-column label="批次" width="80">
+          <template #default="{ row }">{{ row.lot_id ? row.lot_id : '默认' }}</template>
+        </el-table-column>
+      </el-table>
+    </template>
+  </el-drawer>
 </template>
 
 <style scoped>
-.wrap { max-width: 720px; }
+.wrap { max-width: 960px; }
 .head h2 { margin: 0 0 6px; font-size: 18px; font-weight: 600; color: #1b2740; }
 .head p { margin: 0 0 20px; font-size: 13px; color: #66748f; }
+.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.pager { display: flex; justify-content: flex-end; margin-top: 12px; }
+.d-head { display: flex; align-items: center; justify-content: space-between; }
+.d-code { font-size: 16px; font-weight: 600; color: #1b2740; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
 .lines { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .line { display: flex; align-items: center; gap: 8px; }
