@@ -1,5 +1,0 @@
-chore: 归档 p4-wave-replenish
-
-波次生成、播种墙分播、整箱补货、启动恢复均已验通；打印九条已移交
-adopt-hiprint-print。「生成到一半中止」未通过：中止提交后仍有 1–3 单停在
-picking，竞态与修法记录在 tasks.md 实施记录，随变更一并归档。
