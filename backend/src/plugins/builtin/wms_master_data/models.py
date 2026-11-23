@@ -7,7 +7,7 @@
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db import Base
@@ -235,3 +235,47 @@ class WmsSequence(IDMixin, TimestampMixin, Base):
     prefix: Mapped[str] = mapped_column(String(16), nullable=False)
     period: Mapped[str] = mapped_column(String(16), default="", nullable=False)
     current: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class WmsTeam(IDMixin, TimestampMixin, Base):
+    """职能班组。一人一组，班长须为本组在职成员，由 service 校验。"""
+
+    __tablename__ = "wms_master_data_team"
+
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, comment="班组编码")
+    name: Mapped[str] = mapped_column(String(100), nullable=False, comment="班组名称")
+    function_type: Mapped[str] = mapped_column(
+        String(32), default="other", nullable=False,
+        comment="receiving/putaway/picking/sorting/checking/shipping/internal_ops/other",
+    )
+    leader_staff_id: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="班长 staff.id"
+    )
+    status: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False, comment="状态: 0=停用 1=启用"
+    )
+    remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class WmsStaff(IDMixin, TimestampMixin, Base):
+    """仓库作业人员档案。user_id 为空即临时工，不产生登录能力。"""
+
+    __tablename__ = "wms_master_data_staff"
+    __table_args__ = (
+        Index("ix_wms_staff_team_status", "team_id", "status"),
+    )
+
+    code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, comment="工号")
+    name: Mapped[str] = mapped_column(String(100), nullable=False, comment="姓名")
+    phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, unique=True, nullable=True, index=True,
+        comment="绑定的 sys_user.id，空=临时工",
+    )
+    team_id: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="所属班组 id"
+    )
+    status: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False, comment="状态: 0=离职 1=在职"
+    )
+    remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

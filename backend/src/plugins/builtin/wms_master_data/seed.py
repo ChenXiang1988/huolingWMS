@@ -188,6 +188,38 @@ async def seed_master_data(db: AsyncSession) -> None:
         permission="wms_master_data:apikey:create", sort=1,
     )
 
+    team_page = await _ensure_menu(
+        db, cache,
+        name="班组管理", parent_id=top.id, mtype="C",
+        path="team", component="wms_master_data/team/index",
+        permission="wms_master_data:team:list", icon="OfficeBuilding", sort=6,
+    )
+    backend_pages.append(team_page)
+    for sort, name, perm in (
+        (1, "新建班组", "wms_master_data:team:create"),
+        (2, "编辑班组", "wms_master_data:team:edit"),
+    ):
+        await _ensure_menu(
+            db, cache, name=name, parent_id=team_page.id, mtype="F",
+            permission=perm, sort=sort,
+        )
+
+    staff_page = await _ensure_menu(
+        db, cache,
+        name="人员档案", parent_id=top.id, mtype="C",
+        path="staff", component="wms_master_data/staff/index",
+        permission="wms_master_data:staff:list", icon="User", sort=7,
+    )
+    backend_pages.append(staff_page)
+    for sort, name, perm in (
+        (1, "新建人员", "wms_master_data:staff:create"),
+        (2, "编辑人员", "wms_master_data:staff:edit"),
+    ):
+        await _ensure_menu(
+            db, cache, name=name, parent_id=staff_page.id, mtype="F",
+            permission=perm, sort=sort,
+        )
+
     # ── 门户：顶级目录 + 两个页面 ───────────────────────
     portal = await _ensure_menu(
         db, cache,

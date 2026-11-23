@@ -27,6 +27,8 @@
 | `barcode` | id, sku_id, barcode, barcode_type | `barcode` 唯一 |
 | `unit` | id, code, name, decimal_places | `code` 唯一 |
 | `partner` | id, code, name, partner_type, contact, phone, address, status | `code` 唯一；`partner_type` = supplier / customer |
+| `team` | id, code, name, function_type, leader_staff_id, status, remark | `code` 唯一；`function_type` = receiving / putaway / picking / sorting / checking / shipping / internal_ops / other；`leader_staff_id` 指向 `staff.id`，可空 |
+| `staff` | id, code, name, phone, user_id, team_id, status, remark | `code`（工号）全仓唯一；`user_id` 可空且唯一（空=临时工）；索引 `(team_id, status)`；离职改 `status`，不删除 |
 | `sequence` | id, prefix, period, current | `(prefix, period)` 唯一 |
 | `print_template` | id, code, name, template_type, paper_width, paper_height, content, version, status | 同类型只允许一个启用；`content` 为 hiprint 的 JSON |
 | `print_task` | id, ref_type, ref_id, template_id, template_version, printer_name, client_id, status, error_msg, reprint_times, operator_id, created_at | 索引 `(ref_type, ref_id)`、`(created_at)`；按月归档，只留近 90 天 |

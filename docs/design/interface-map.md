@@ -17,6 +17,8 @@
 | 主数据 | 商品（基础信息） | list/create/edit/delete | `wms_master_data:sku:*` |
 | 主数据 | 商品（存储要求） | configure | `wms_master_data:sku:configure` |
 | 主数据 | 合作方 | list/create/edit/delete | `wms_master_data:partner:*` |
+| 主数据 | 班组 | list/create/edit | `wms_master_data:team:*` |
+| 主数据 | 人员档案 | list/create/edit | `wms_master_data:staff:*` |
 | 主数据 | 门户入口 | view | `wms_master_data:portal:view` |
 | 库存 | 库存 | list/view | `wms_inventory:stock:list` / `:view` |
 | 库存 | 库存调整 | create | `wms_inventory:adjust:create` |
@@ -92,6 +94,18 @@
 | POST | `/wms-master-data/skus` | `wms_master_data:sku:create` |
 | PUT | `/wms-master-data/skus/{id}` | `wms_master_data:sku:edit`（仅基础信息组） |
 | PUT | `/wms-master-data/skus/{id}/storage` | `wms_master_data:sku:configure`（仅仓库侧字段） |
+| GET | `/wms-master-data/teams` | `wms_master_data:team:list` |
+| POST | `/wms-master-data/teams` | `wms_master_data:team:create` |
+| PUT | `/wms-master-data/teams/{team_id}` | `wms_master_data:team:edit` |
+| PUT | `/wms-master-data/teams/{team_id}/leader` | `wms_master_data:team:edit` |
+| POST | `/wms-master-data/teams/{team_id}/toggle` | `wms_master_data:team:edit` |
+| GET | `/wms-master-data/staffs` | `wms_master_data:staff:list` |
+| GET | `/wms-master-data/staffs/by-user/{user_id}` | `wms_master_data:staff:list` |
+| POST | `/wms-master-data/staffs` | `wms_master_data:staff:create` |
+| PUT | `/wms-master-data/staffs/{staff_id}` | `wms_master_data:staff:edit` |
+| POST | `/wms-master-data/staffs/{staff_id}/team` | `wms_master_data:staff:edit`（加入） |
+| PUT | `/wms-master-data/staffs/{staff_id}/team` | `wms_master_data:staff:edit`（调组） |
+| DELETE | `/wms-master-data/staffs/{staff_id}/team` | `wms_master_data:staff:edit`（退出） |
 | GET | `/wms-inventory/stocks` | `wms_inventory:stock:list` |
 | GET | `/wms-inventory/txns` | `wms_inventory:txn:list` |
 | GET | `/wms-inventory/lots` | `wms_inventory:lot:list` |

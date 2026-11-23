@@ -20,7 +20,18 @@ from src.core.exceptions import NotFoundException, ValidationException, success_
 from src.db import get_db
 from src.models import User
 from src.plugins.builtin.wms_master_data import models as m
-from src.plugins.builtin.wms_master_data.service import create_owner, next_code
+from src.plugins.builtin.wms_master_data.service import (
+    create_owner,
+    create_staff,
+    get_staff_by_user,
+    join_team,
+    leave_team,
+    next_code,
+    set_team_leader,
+    toggle_team,
+    transfer_team,
+    update_staff,
+)
 
 router = APIRouter(prefix="/wms-master-data", tags=["主数据"])
 
@@ -978,3 +989,238 @@ async def rotate_apikey(
     row.key_hash = _hash_key(raw)
     await db.commit()
     return success_response(data={"id": row.id, "api_key": raw, "key_prefix": row.key_prefix})
+
+
+# ── 职能班组 ─────────────────────────────────────────
+
+
+class TeamIn(BaseModel):
+    code: str = Field(..., max_length=64)
+    name: str = Field(..., max_length=100)
+    function_type: str = Field(
+        "other",
+        pattern=r"^(receiving|putaway|picking|sorting|checking|shipping|internal_ops|other)$",
+    )
+    remark: Optional[str] = None
+
+
+@router.get("/teams", summary="班组列表")
+async def list_teams(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:team:list"))],
+    status: Optional[int] = Query(None),
+):
+    cond = []
+    if status is not None:
+        cond.append(m.WmsTeam.status == status)
+    rows = (
+        await db.execute(select(m.WmsTeam).where(*cond).order_by(m.WmsTeam.id))
+    ).scalars().all()
+    return success_response(
+        data=[
+            {
+                "id": r.id,
+                "code": r.code,
+                "name": r.name,
+                "function_type": r.function_type,
+                "leader_staff_id": r.leader_staff_id,
+                "status": r.status,
+            }
+            for r in rows
+        ]
+    )
+
+
+@router.post("/teams", summary="新建班组")
+async def post_team(
+    payload: TeamIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:team:create"))],
+):
+    row = m.WmsTeam(**payload.model_dump(), status=1)
+    db.add(row)
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ValidationException(f"班组编码 {payload.code} 已占用") from exc
+    return success_response(data={"id": row.id})
+
+
+@router.put("/teams/{team_id}", summary="编辑班组")
+async def put_team(
+    team_id: int,
+    payload: TeamIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:team:edit"))],
+):
+    row = (
+        await db.execute(select(m.WmsTeam).where(m.WmsTeam.id == team_id))
+    ).scalars().first()
+    if row is None:
+        raise NotFoundException("班组不存在")
+    row.name = payload.name
+    row.function_type = payload.function_type
+    row.remark = payload.remark
+    await db.commit()
+    return success_response(data={"id": row.id})
+
+
+class LeaderIn(BaseModel):
+    staff_id: Optional[int] = None
+
+
+@router.put("/teams/{team_id}/leader", summary="指定或清空班长")
+async def put_team_leader(
+    team_id: int,
+    payload: LeaderIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:team:edit"))],
+):
+    team = await set_team_leader(db, team_id, payload.staff_id)
+    await db.commit()
+    return success_response(
+        data={"id": team.id, "leader_staff_id": team.leader_staff_id}
+    )
+
+
+@router.post("/teams/{team_id}/toggle", summary="启用或停用班组")
+async def toggle_team_status(
+    team_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:team:edit"))],
+    enabled: bool = Query(...),
+):
+    team = await toggle_team(db, team_id, enabled)
+    await db.commit()
+    return success_response(data={"id": team.id, "status": team.status})
+
+
+# ── 人员档案 ─────────────────────────────────────────
+
+
+class StaffIn(BaseModel):
+    code: str = Field(..., max_length=64)
+    name: str = Field(..., max_length=100)
+    phone: Optional[str] = None
+    user_id: Optional[int] = None
+
+
+class StaffUpdateIn(BaseModel):
+    name: str = Field(..., max_length=100)
+    phone: Optional[str] = None
+    status: int = Field(1, ge=0, le=1)
+
+
+class TeamAssignIn(BaseModel):
+    team_id: int
+
+
+@router.get("/staffs", summary="人员列表")
+async def list_staffs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:list"))],
+    team_id: Optional[int] = Query(None),
+    status: Optional[int] = Query(None),
+):
+    cond = []
+    if team_id is not None:
+        cond.append(m.WmsStaff.team_id == team_id)
+    if status is not None:
+        cond.append(m.WmsStaff.status == status)
+    rows = (
+        await db.execute(select(m.WmsStaff).where(*cond).order_by(m.WmsStaff.id))
+    ).scalars().all()
+    return success_response(
+        data=[
+            {
+                "id": r.id,
+                "code": r.code,
+                "name": r.name,
+                "phone": r.phone,
+                "user_id": r.user_id,
+                "team_id": r.team_id,
+                "status": r.status,
+            }
+            for r in rows
+        ]
+    )
+
+
+@router.get("/staffs/by-user/{user_id}", summary="按账号查在职人员")
+async def get_staff_of_user(
+    user_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:list"))],
+):
+    return success_response(data=await get_staff_by_user(db, user_id))
+
+
+@router.post("/staffs", summary="新建人员档案")
+async def post_staff(
+    payload: StaffIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:create"))],
+):
+    try:
+        staff = await create_staff(
+            db,
+            code=payload.code,
+            name=payload.name,
+            phone=payload.phone,
+            user_id=payload.user_id,
+        )
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise ValidationException(f"工号 {payload.code} 已占用") from exc
+    return success_response(data={"id": staff.id, "code": staff.code})
+
+
+@router.put("/staffs/{staff_id}", summary="编辑人员档案")
+async def put_staff(
+    staff_id: int,
+    payload: StaffUpdateIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:edit"))],
+):
+    staff = await update_staff(
+        db, staff_id, name=payload.name, phone=payload.phone, status=payload.status
+    )
+    await db.commit()
+    return success_response(data={"id": staff.id, "status": staff.status})
+
+
+@router.post("/staffs/{staff_id}/team", summary="人员加入班组")
+async def join_staff_team(
+    staff_id: int,
+    payload: TeamAssignIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:edit"))],
+):
+    staff = await join_team(db, staff_id, payload.team_id)
+    await db.commit()
+    return success_response(data={"id": staff.id, "team_id": staff.team_id})
+
+
+@router.put("/staffs/{staff_id}/team", summary="人员调组")
+async def transfer_staff_team(
+    staff_id: int,
+    payload: TeamAssignIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:edit"))],
+):
+    staff = await transfer_team(db, staff_id, payload.team_id)
+    await db.commit()
+    return success_response(data={"id": staff.id, "team_id": staff.team_id})
+
+
+@router.delete("/staffs/{staff_id}/team", summary="人员退出班组")
+async def leave_staff_team(
+    staff_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:edit"))],
+):
+    staff = await leave_team(db, staff_id)
+    await db.commit()
+    return success_response(data={"id": staff.id, "team_id": staff.team_id})

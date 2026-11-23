@@ -28,6 +28,8 @@ _TABLES = [
     m.WmsPartner.__table__,
     m.WmsApiKey.__table__,
     m.WmsSequence.__table__,
+    m.WmsTeam.__table__,
+    m.WmsStaff.__table__,
 ]
 
 

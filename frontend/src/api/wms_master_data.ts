@@ -65,3 +65,28 @@ export const listApiKeys = (params: any) =>
 export const createApiKey = (data: any) => request.post('/wms-master-data/apikeys', data)
 export const rotateApiKey = (id: number) =>
   request.post(`/wms-master-data/apikeys/${id}/rotate`)
+
+// ── 班组与人员 ────────────────────────────
+export const listTeams = (params?: any) =>
+  request.get('/wms-master-data/teams', { params })
+export const createTeam = (data: any) => request.post('/wms-master-data/teams', data)
+export const updateTeam = (id: number, data: any) =>
+  request.put(`/wms-master-data/teams/${id}`, data)
+export const setTeamLeader = (id: number, staffId: number | null) =>
+  request.put(`/wms-master-data/teams/${id}/leader`, { staff_id: staffId })
+export const toggleTeam = (id: number, enabled: boolean) =>
+  request.post(`/wms-master-data/teams/${id}/toggle`, null, { params: { enabled } })
+
+export const listStaffs = (params?: any) =>
+  request.get('/wms-master-data/staffs', { params })
+export const getStaffByUser = (userId: number) =>
+  request.get(`/wms-master-data/staffs/by-user/${userId}`)
+export const createStaff = (data: any) => request.post('/wms-master-data/staffs', data)
+export const updateStaff = (id: number, data: any) =>
+  request.put(`/wms-master-data/staffs/${id}`, data)
+export const joinStaffTeam = (id: number, teamId: number) =>
+  request.post(`/wms-master-data/staffs/${id}/team`, { team_id: teamId })
+export const transferStaffTeam = (id: number, teamId: number) =>
+  request.put(`/wms-master-data/staffs/${id}/team`, { team_id: teamId })
+export const leaveStaffTeam = (id: number) =>
+  request.delete(`/wms-master-data/staffs/${id}/team`)
