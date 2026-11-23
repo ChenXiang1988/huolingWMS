@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     JWT_REFRESH_EXPIRE_DAYS: int = 7
 
     # ---- AI usage ----
+    AI_ENABLED: bool = True
     # Per-user daily LLM call cap; 0 disables the cap.
     AI_DAILY_LIMIT: int = 200
 

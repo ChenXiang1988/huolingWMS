@@ -128,6 +128,7 @@ _ZH = {
     "chat.daily_limit_reached": "今日 AI 调用次数已达上限（{limit} 次/天），请明日再试或联系管理员调整配额",
     "chat.provider_disabled": "该模型供应商已被禁用",
     "chat.no_provider_configured": "未配置任何可用的模型供应商，请先在「模型密钥管理」中添加",
+    "chat.api_key_placeholder": "模型密钥仍是占位值，请先在「模型密钥管理」填写真实 API Key",
 
     # chat_session
     "chat_session.default_title": "新对话",
@@ -299,6 +300,7 @@ _EN = {
     "chat.daily_limit_reached": "Daily AI usage limit reached ({limit}/day). Try again tomorrow or ask the admin to raise the quota",
     "chat.provider_disabled": "The model provider has been disabled",
     "chat.no_provider_configured": "No model provider configured, please add one in Model Providers first",
+    "chat.api_key_placeholder": "The model API key is still a placeholder, please set a real key in Model Providers first",
 
     # chat_session
     "chat_session.default_title": "New Chat",

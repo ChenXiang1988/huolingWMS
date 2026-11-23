@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.ai.agent import chat_non_stream, chat_stream
 from src.core.config import settings
+from src.core.crypto import decrypt_api_key
 from src.core.deps import get_current_user
 from src.core.exceptions import AppException, success_response
 from src.core.i18n import t, get_locale
@@ -52,11 +53,13 @@ async def _get_provider(db: AsyncSession, provider_id: int | None):
             raise AppException(t("chat.provider_not_found"), code=404)
         if provider.enabled != 1:
             raise AppException(t("chat.provider_disabled"), code=400)
-        return provider
+    else:
+        provider = await crud_ai_provider.get_first_enabled(db)
+        if not provider:
+            raise AppException(t("chat.no_provider_configured"), code=400)
 
-    provider = await crud_ai_provider.get_first_enabled(db)
-    if not provider:
-        raise AppException(t("chat.no_provider_configured"), code=400)
+    if decrypt_api_key(provider.api_key_enc).startswith("sk-placeholder"):
+        raise AppException(t("chat.api_key_placeholder"), code=400)
     return provider
 
 

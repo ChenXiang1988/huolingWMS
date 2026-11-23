@@ -176,7 +176,7 @@ async def _hide_vendor_menus(db: AsyncSession) -> None:
     范围：
     - 插件市场（/apehub）与插件示例（/dev-example）：货灵不用
     - MCP 管理：仅在 ``MCP_ENABLED=false`` 时隐藏，保留受配置控制的能力
-    - AI 助手：货灵不接模型供应商，固定隐藏
+    - AI 助手：仅在 ``AI_ENABLED=false`` 时隐藏，开启时把历史隐藏项恢复
     """
     from sqlalchemy import or_, update
 
@@ -188,9 +188,12 @@ async def _hide_vendor_menus(db: AsyncSession) -> None:
         Menu.path.like("/dev-example%"),
         Menu.permission.like("apehub:%"),
         Menu.permission.like("dev_example:%"),
-        Menu.path.like("/ai%"),
-        Menu.permission.like("ai:%"),
     ]
+    if not settings.AI_ENABLED:
+        conditions += [
+            Menu.path.like("/ai%"),
+            Menu.permission.like("ai:%"),
+        ]
     if not settings.MCP_ENABLED:
         conditions += [
             Menu.path.like("/mcp%"),
@@ -202,6 +205,18 @@ async def _hide_vendor_menus(db: AsyncSession) -> None:
     )
     if result.rowcount:
         logger.info(f"Hid {result.rowcount} vendor menus (apehub / dev_example / ai / mcp)")
+
+    if settings.AI_ENABLED:
+        restored = await db.execute(
+            update(Menu)
+            .where(
+                or_(Menu.path.like("/ai%"), Menu.permission.like("ai:%")),
+                Menu.status == 0,
+            )
+            .values(status=1)
+        )
+        if restored.rowcount:
+            logger.info(f"Restored {restored.rowcount} AI menus")
 
 
 async def _seed_dept(db: AsyncSession) -> None:
@@ -293,6 +308,8 @@ async def _seed_menus(db: AsyncSession) -> None:
         ("新增模型密钥", "模型密钥管理", "F", None, None, "ai:provider:add", None, 1),
         ("编辑模型密钥", "模型密钥管理", "F", None, None, "ai:provider:edit", None, 2),
         ("删除模型密钥", "模型密钥管理", "F", None, None, "ai:provider:delete", None, 3),
+        # 货主推送订单的集中入口；子页面由入库/出库插件各自挂靠
+        ("客户服务", None, "M", "/wms-customer-service", None, None, "Service", 35),
         # ApeHub management menus (also included in the first-run seed)
         ("ApeHub 管理", None, "M", "/apehub", None, None, "Shop", 40),
         ("官网配置", "ApeHub 管理", "C", "admin/config", "apehub/admin/config", "apehub:config", "Setting", 1),
@@ -376,7 +393,13 @@ async def _seed_missing_menus(db: AsyncSession) -> None:
         ("提示词列表", "MCP 管理", "C", "prompts", "mcp/prompts", "mcp:prompts:list", "ChatLineSquare", 3),
         ("调用工具", "工具列表", "F", None, None, "mcp:tools:call", None, 1),
         ("调用日志", "MCP 管理", "C", "audit-logs", "mcp/audit-logs", "mcp:audit:list", "List", 4),
-        # AI module button-level permissions
+        # AI module menus and button-level permissions
+        ("AI 助手", None, "M", "/ai", None, None, "ChatDotRound", 30),
+        ("AI 全能助手", "AI 助手", "C", "chat", "ai/chat/index", "ai:chat", "ChatLineRound", 1),
+        ("模型密钥管理", "AI 助手", "C", "providers", "ai/providers/index", "ai:provider:list", "Key", 2),
+        ("新增模型密钥", "模型密钥管理", "F", None, None, "ai:provider:add", None, 1),
+        ("编辑模型密钥", "模型密钥管理", "F", None, None, "ai:provider:edit", None, 2),
+        ("删除模型密钥", "模型密钥管理", "F", None, None, "ai:provider:delete", None, 3),
         ("调用AI对话", "AI 全能助手", "F", None, None, "ai:chat:call", None, 1),
         # System log menu (incremental)
         ("系统日志", "系统管理", "C", "log", "system/log/index", "system:log:list", "Document", 6),
@@ -400,6 +423,8 @@ async def _seed_missing_menus(db: AsyncSession) -> None:
         ("移动文件", "文件管理", "F", None, None, "system:file:move", None, 4),
         ("删除文件", "文件管理", "F", None, None, "system:file:delete", None, 5),
         ("下载文件", "文件管理", "F", None, None, "system:file:download", None, 6),
+        # 货主推送订单的集中入口；子页面由入库/出库插件各自挂靠
+        ("客户服务", None, "M", "/wms-customer-service", None, None, "Service", 35),
         # ApeHub plugin-owned management menus and developer actions
         ("ApeHub 管理", None, "M", "/apehub", None, None, "Shop", 40),
         ("官网配置", "ApeHub 管理", "C", "admin/config", "apehub/admin/config", "apehub:config", "Setting", 1),
