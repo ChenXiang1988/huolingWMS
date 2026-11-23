@@ -45,7 +45,8 @@ Vue 3.5 + TypeScript + Vite 6 + Element Plus 2.14 + Pinia
 
 ```bash
 # 开发环境：只有数据库进容器
-docker compose up -d mysql
+# 必须用脚本：直接 compose up 会走生产文件（无 3307 映射），Recreate 后 backend/.env 连不上
+./scripts/dev-db.sh
 uvicorn src.main:app --reload     # backend/
 npm run dev                       # frontend/
 

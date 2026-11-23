@@ -4,6 +4,12 @@
 
 完整业务设计见 `openspec/specs/wms/`（常驻规格）与 `docs/design/`（表结构、接口、页面、技术栈）。
 
+## 货主系统对接
+
+货主自己的 ERP/OMS 走 `/api/v1/open/v1`，鉴权头 `X-API-Key`，货主身份由密钥决定、不读请求体。机器可读契约是 `docs/api/openapi-owner.json`（OpenAPI 3.1），可直接导入生成客户端或交给 AI 读取。
+
+交给 AI 时要补两句：`X-API-Key` 在 schema 里标的是可选，实际必传；200 响应的 schema 目前是空的，实际返回 `{"code": 200, "msg": "...", "data": {...}}`，错误码以 `backend/src/core/exceptions.py` 为准，`interface-map.md` 里的字符串错误码尚未落地。幂等键 `owner_doc_no`、数量只存最小单位等规则见 `docs/design/interface-map.md` 与 `openspec/specs/wms/owner-access/spec.md`，需要一并读。
+
 ## 依赖版本
 
 | 项 | 版本 | 说明 |
