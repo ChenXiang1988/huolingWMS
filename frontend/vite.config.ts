@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
 
 /**
  * 一个工程出两个构建产物：
@@ -27,7 +28,25 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: isOwner ? '/owner/' : '/admin/',
-    plugins: [vue()],
+    plugins: [
+      vue(),
+      {
+        name: 'owner-dev-entry',
+        apply: 'serve' as const,
+        transformIndexHtml: {
+          order: 'pre' as const,
+          handler(html: string) {
+            // build 走 rollupOptions.input，dev 的 SPA fallback 永远读 root/index.html。
+            // 门户 dev 必须换成自己的入口，否则加载后台 main.ts 后被 /admin/ 路由接管。
+            if (!isOwner) return html
+            return readFileSync(
+              fileURLToPath(new URL('./owner/index.html', import.meta.url)),
+              'utf-8'
+            )
+          },
+        },
+      },
+    ],
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),

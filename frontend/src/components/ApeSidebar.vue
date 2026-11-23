@@ -138,9 +138,9 @@ const openedTopMenus = ref<Record<string | number, boolean>>({})
 // 子菜单数量超过该值则默认收起（避免大量子菜单平铺过长）
 const DEFAULT_COLLAPSE_THRESHOLD = 12
 
-// 过滤掉 F 类型（按钮），只保留 M/C 用于侧边栏渲染
+// 过滤掉 F 类型（按钮）与货主门户（独立入口，不进后台侧栏），只保留 M/C 用于渲染
 const menuTree = computed(() => {
-  return (userStore.menus || []).filter((m: any) => m.type !== 'F')
+  return (userStore.menus || []).filter((m: any) => m.type !== 'F' && m.path !== '/owner')
 })
 
 // 判断当前路由是否命中某顶级目录下的菜单

@@ -7,11 +7,15 @@ from src.models import Menu, Role
 from src.models.rbac import role_menu
 
 _PAGES = [
-    ("入库预报", "asn", "wms_inbound/asn/index", "wms_inbound:asn:list", "Download", 1),
     ("服务订单", "service_order", "wms_inbound/service_order/index",
      "wms_inbound:service_order:list", "Document", 2),
     ("收货", "receipt", "wms_inbound/receipt/index", "wms_inbound:receipt:list", "Box", 3),
     ("上架", "putaway", "wms_inbound/putaway/index", "wms_inbound:putaway:list", "Sort", 4),
+]
+
+# 入库预报由货主通过开放 API 或自助端推送，归到基座创建的「客户服务」目录
+_CUSTOMER_SERVICE_PAGES = [
+    ("入库预报", "asn", "wms_inbound/asn/index", "wms_inbound:asn:list", "Download", 1),
 ]
 
 # (页面 path, 按钮名, 权限, 排序)
@@ -51,6 +55,8 @@ async def seed_inbound(db: AsyncSession) -> None:
             )
         )
 
+    service = find("客户服务", 0)
+
     pages: dict[str, Menu] = {}
     for name, path, component, permission, icon, sort in _PAGES:
         menu = find(name, top.id)
@@ -62,6 +68,25 @@ async def seed_inbound(db: AsyncSession) -> None:
                     icon=icon, sort=sort, visible=1, status=1,
                 )
             )
+        pages[path] = menu
+
+    for name, path, component, permission, icon, sort in _CUSTOMER_SERVICE_PAGES:
+        menu = find(name, service.id)
+        if menu is None:
+            # 已初始化的库里入库预报挂在「入库」下，改挂到客户服务，保留按钮权限
+            old = find(name, top.id)
+            if old is not None:
+                old.parent_id = service.id
+                await db.flush()
+                menu = old
+            else:
+                menu = await ensure(
+                    Menu(
+                        name=name, parent_id=service.id, type="C", path=path,
+                        component=component, permission=permission,
+                        icon=icon, sort=sort, visible=1, status=1,
+                    )
+                )
         pages[path] = menu
 
     created_buttons: list[Menu] = []
@@ -91,7 +116,7 @@ async def seed_inbound(db: AsyncSession) -> None:
                 )
             ).scalars().all()
         )
-        targets = [top, *pages.values(), *created_buttons]
+        targets = [top, service, *pages.values(), *created_buttons]
         rows = [
             {"role_id": admin.id, "menu_id": m.id} for m in targets if m.id not in bound
         ]
