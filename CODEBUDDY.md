@@ -24,12 +24,12 @@
 ```
 backend/    FastAPI 后端，业务按域拆成插件（src/plugins/builtin/wms_*）
 frontend/   Vue3 前端，后台 + 货主门户 /owner + 作业端路由组 /m
-mobile/     Capacitor 容器工程，只打作业端 APK
+mobile/     Capacitor 容器工程，规划中（P5），当前未创建
 openspec/   specs/ 常驻规格；changes/ 进行中的变更与归档
 docs/design/ 详细设计：表结构、接口、页面、技术栈
 ```
 
-`backend/`、`frontend/`、`mobile/` 尚未创建，由 P0 落地。
+`backend/`、`frontend/` 已落地；`mobile/` 规划在 P5，当前作业端以浏览器形态使用 `/m`。
 
 ## 技术栈
 
@@ -41,7 +41,7 @@ Vue 3.5 + TypeScript + Vite 6 + Element Plus 2.14 + Pinia
 
 ## 命令
 
-以下命令在 P0 落地后可用。
+常用命令：
 
 ```bash
 # 开发环境：只有数据库进容器
