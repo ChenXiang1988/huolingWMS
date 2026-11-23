@@ -4,6 +4,48 @@
 
 完整业务设计见 `openspec/specs/wms/`（常驻规格）与 `docs/design/`（表结构、接口、页面、技术栈）。
 
+## 界面速览
+
+截图取自本地 dev 环境，使用演示数据。
+
+### 管理后台
+
+![库存查询](docs/screenshots/admin-stock.png)
+
+按货主与商品查看库存数量、批次数与状态，库存只能由收货和调整记账产生。
+
+![商品档案](docs/screenshots/admin-sku.png)
+
+货主填商品基础信息，仓库补批次与温区要求，两组字段分开维护。
+
+![货主管理](docs/screenshots/admin-owner.png)
+
+一个货主一个主账号，建货主时自动开通对应的门户登录账号。
+
+![库位管理](docs/screenshots/admin-location.png)
+
+库位按库区归集，可按库区、类型、温区筛选。
+
+### 货主门户
+
+![门户概览](docs/screenshots/owner-dashboard.png)
+
+货主用独立账号登录，只看得到本货主的入口与数据。
+
+![入库预报建单](docs/screenshots/owner-asn.png)
+
+货主自助登记货主单号、商品与应收数量，提交后由仓库开收货单。
+
+![库存查询](docs/screenshots/owner-stock.png)
+
+货主查本货主的库存汇总，库位与批次明细由仓库侧管理。
+
+### 作业端
+
+![我的任务](docs/screenshots/mobile-tasks.png)
+
+PDA 与浏览器共用的窄屏任务页，领取后扫码执行。
+
 ## 货主系统对接
 
 货主自己的 ERP/OMS 走 `/api/v1/open/v1`，鉴权头 `X-API-Key`，货主身份由密钥决定、不读请求体。机器可读契约是 `docs/api/openapi-owner.json`（OpenAPI 3.1），可直接导入生成客户端或交给 AI 读取。
