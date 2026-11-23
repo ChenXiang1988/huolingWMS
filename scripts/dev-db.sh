@@ -9,7 +9,7 @@ cd "$ROOT"
 
 NAME="huoling-mysql"
 if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
-  BINDINGS="$(docker inspect -f '{{range $p, $c := .HostConfig.PortBindings}}{{$p}} {{end}}' "$NAME" 2>/dev/null || true)"
+  BINDINGS="$(docker port "$NAME" 2>/dev/null || true)"
   case "$BINDINGS" in
     *3307*) ;;
     *)
