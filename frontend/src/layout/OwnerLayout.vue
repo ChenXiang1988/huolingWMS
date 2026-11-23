@@ -1,31 +1,54 @@
 <script setup lang="ts">
 /**
- * 货主门户布局。
+ * 货主门户布局：与后台同构的 ApeSidebar + ApeHeader 外壳，但只渲染 `/owner`
+ * 这一支菜单，且不出现版本更新、系统设置等后台专属入口。
  *
- * 与后台布局并列，只渲染 `/owner` 这一支菜单——员工不会进到这个布局，
- * 货主也进不到后台布局，隔离靠路由而不是靠隐藏按钮。
+ * 隔离靠路由与登录入口而不是隐藏按钮——员工进不到这个布局，货主进不到后台布局。
  */
-import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import ApeSidebar from '@/components/ApeSidebar.vue'
+import ApeHeader from '@/components/ApeHeader.vue'
 import { useUserStore } from '@/stores/user'
+import { useTheme } from '@/composables/useTheme'
 
-const route = useRoute()
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
+const { isDark, toggleDark } = useTheme()
 
-/** 门户菜单：从用户菜单树里取 path 为 /owner 的那个目录。 */
-const portalMenu = computed(() =>
-  (userStore.menus as any[]).find((m) => m.path === '/owner')
-)
+const collapsed = ref(false)
+const isMobile = ref(false)
+const mobileSidebarOpen = ref(false)
 
-const children = computed<any[]>(() => portalMenu.value?.children || [])
-
-const activePath = computed(() => route.path)
-
-function go(child: any) {
-  const p = child.path?.startsWith('/') ? child.path : `/${child.path}`
-  router.push(p)
+function checkMobile() {
+  const w = window.innerWidth
+  isMobile.value = w <= 1199
+  if (isMobile.value) {
+    mobileSidebarOpen.value = false
+    collapsed.value = false
+  } else if (w <= 1600) {
+    collapsed.value = true
+  } else {
+    collapsed.value = false
+  }
 }
+
+watch(() => route.path, () => {
+  if (isMobile.value) mobileSidebarOpen.value = false
+})
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+})
+
+function toggleCollapse() { collapsed.value = !collapsed.value }
+function toggleMobileSidebar() { mobileSidebarOpen.value = !mobileSidebarOpen.value }
+function closeMobileSidebar() { mobileSidebarOpen.value = false }
+function toggleTheme() { toggleDark() }
 
 function logout() {
   userStore.reset()
@@ -34,113 +57,92 @@ function logout() {
 </script>
 
 <template>
-  <div class="owner-shell">
-    <aside class="owner-side">
-      <div class="owner-brand">
-        <span class="dot" />
-        <div>
-          <div class="brand-name">货主门户</div>
-          <div class="brand-sub">{{ userStore.nickname || userStore.username || '' }}</div>
-        </div>
-      </div>
+  <div class="layout">
+    <Transition name="overlay-fade">
+      <div v-if="isMobile && mobileSidebarOpen" class="sidebar-overlay" @click="closeMobileSidebar"></div>
+    </Transition>
 
-      <nav class="owner-nav">
-        <button
-          v-for="item in children"
-          :key="item.id"
-          class="nav-item"
-          :class="{ active: activePath === '/' + item.path }"
-          @click="go(item)"
-        >
-          {{ item.name }}
-        </button>
-      </nav>
+    <ApeSidebar
+      portal
+      :collapsed="collapsed"
+      :isMobile="isMobile"
+      :mobileOpen="mobileSidebarOpen"
+      @toggle="toggleCollapse"
+      @close-mobile="closeMobileSidebar"
+    />
 
-      <button class="logout" @click="logout">退出登录</button>
-    </aside>
-
-    <main class="owner-main">
-      <router-view />
-    </main>
+    <div class="layout-main" :class="{ 'is-collapsed': collapsed && !isMobile, 'is-mobile': isMobile }">
+      <ApeHeader
+        portal
+        :isDark="isDark"
+        :collapsed="collapsed"
+        :isMobile="isMobile"
+        @toggle-theme="toggleTheme"
+        @logout="logout"
+        @toggle-mobile-sidebar="toggleMobileSidebar"
+      />
+      <main class="main">
+        <router-view />
+      </main>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.owner-shell {
+.layout {
+  height: 100%;
+  width: 100%;
   display: flex;
-  min-height: 100vh;
-  background: #f5f7fb;
+  flex-direction: row;
+  overflow: hidden;
 }
-.owner-side {
-  width: 220px;
-  flex: none;
+.layout-main {
+  height: 100vh;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
-  border-right: 1px solid #e8ecf3;
-  padding: 18px 12px;
+  overflow: hidden;
+  padding-left: 258px;
+  transition: padding-left 0.3s ease;
 }
-.owner-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 8px 18px;
-  border-bottom: 1px solid #eef1f6;
+.layout-main.is-collapsed {
+  padding-left: 86px;
 }
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #10b3a3;
-  box-shadow: 0 0 0 4px rgba(16, 179, 163, 0.15);
+.layout-main.is-mobile {
+  padding-left: 0;
 }
-.brand-name {
-  font-size: 14px;
-  font-weight: 700;
-  color: #1b2740;
-}
-.brand-sub {
-  font-size: 12px;
-  color: #66748f;
-  margin-top: 2px;
-}
-.owner-nav {
+.main {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-top: 14px;
+  background-color: var(--theme-body-bg, #eff3f9);
+  padding: 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin-top: 64px;
+  min-height: 0;
 }
-.nav-item {
-  text-align: left;
-  border: 0;
-  background: transparent;
-  padding: 9px 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  color: #3a4a68;
+.sidebar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 8;
   cursor: pointer;
 }
-.nav-item:hover {
-  background: #f3f6fb;
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.25s ease;
 }
-.nav-item.active {
-  background: #eaf5f3;
-  color: #0e8c80;
-  font-weight: 600;
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
 }
-.logout {
-  border: 1px solid #e8ecf3;
-  background: #fff;
-  border-radius: 8px;
-  padding: 8px;
-  font-size: 12px;
-  color: #66748f;
-  cursor: pointer;
+@media (max-width: 991px) {
+  .main { padding: 15px; }
 }
-.owner-main {
-  flex: 1;
-  padding: 24px 28px;
-  overflow: auto;
+@media (max-width: 575px) {
+  .main { padding: 12px; margin-top: 56px; }
 }
 </style>

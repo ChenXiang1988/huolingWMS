@@ -1,6 +1,10 @@
 <template>
   <el-card shadow="never" class="page-card">
     <div class="toolbar">
+      <el-radio-group v-model="scope" @change="handleScopeChange">
+        <el-radio-button value="admin">后台菜单</el-radio-button>
+        <el-radio-button value="owner">货主门户菜单</el-radio-button>
+      </el-radio-group>
       <el-button type="success" @click="openDialog()" v-permission="'system:menu:add'">
         <el-icon><Plus /></el-icon>{{ t('system.menu.createMenu') }}
       </el-button>
@@ -106,6 +110,7 @@ const typeText = computed<Record<string, string>>(() => ({
 }))
 const typeTag: Record<string, string> = { M: 'info', C: 'primary', F: 'warning' }
 
+const scope = ref<'admin' | 'owner'>('admin')
 const tree = ref<any[]>([])
 const loading = ref(false)
 const saving = ref(false)
@@ -143,12 +148,18 @@ const rules: FormRules = {
 async function fetchData() {
   loading.value = true
   try {
-    const data: any = await getMenuTree()
+    const data: any = await getMenuTree(scope.value)
     tree.value = data || []
     parentOptions.value = buildParentOptions(editingId.value)
   } finally {
     loading.value = false
   }
+}
+
+function handleScopeChange() {
+  dialogVisible.value = false
+  editingId.value = null
+  void fetchData()
 }
 
 function removeBranch(nodes: any[], excludedId: number | null): any[] {
@@ -166,7 +177,9 @@ function buildParentOptions(excludedId: number | null = null) {
 
 function openDialog(row?: any) {
   editingId.value = row?.id ?? null
-  form.parent_id = row?.parent_id ?? 0
+  // 门户视图新建时默认挂到 /owner 根，避免用户漏选父节点被后端拒绝。
+  const ownerRootId = scope.value === 'owner' ? (tree.value[0]?.id ?? 0) : 0
+  form.parent_id = row?.parent_id ?? ownerRootId
   form.name = row?.name ?? ''
   form.type = row?.type ?? 'C'
   form.path = row?.path ?? ''
@@ -193,6 +206,7 @@ async function handleSave() {
         permission: form.type === 'F' ? form.permission : form.permission || null,
         sort: form.sort,
         status: form.status,
+        scope: scope.value,
       }
       if (editingId.value) {
         await updateMenu(editingId.value, payload)

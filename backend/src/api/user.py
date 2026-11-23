@@ -4,7 +4,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.deps import get_current_user, require_permission
@@ -75,6 +75,13 @@ async def create_user(
         raise ConflictException(t("user.username_exists", username=body.username))
 
     new_user = await crud_user.create(db, body.model_dump(exclude={"role_ids"}))
+    from src.plugins import plugin_manager
+    try:
+        await plugin_manager.after_user_created(new_user.id, new_user.username)
+    except Exception:
+        await db.execute(delete(User).where(User.id == new_user.id))
+        await db.commit()
+        raise
     if body.role_ids:
         await crud_user.assign_roles(db, new_user.id, body.role_ids)
 

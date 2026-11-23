@@ -27,6 +27,8 @@ graph TD
 | | 商品管理 | `wms_master_data/sku/index` | `wms_master_data:sku:list` | P1 |
 | | 合作方 | `wms_master_data/partner/index` | `wms_master_data:partner:list` | P1 |
 | | API 凭证 | `wms_master_data/apikey/index` | `wms_master_data:apikey:list` | P1 |
+| | 班组管理 | `wms_master_data/team/index` | `wms_master_data:team:list` | P1 |
+| | 人员档案 | `wms_master_data/staff/index` | `wms_master_data:staff:list` | P1 |
 | | 打印模板 | `wms_master_data/print_template/index` | `wms_master_data:print_template:list` | P4 |
 | 库存 `/wms-inventory` | 库存查询 | `wms_inventory/stock/index` | `wms_inventory:stock:list` | P1 |
 | | 库存流水 | `wms_inventory/txn/index` | `wms_inventory:txn:list` | P1 |
@@ -62,18 +64,17 @@ graph TD
 
 ## 门户菜单树
 
-顶级目录 `path = /owner`、`permission = wms_master_data:portal:view`、`component` 为空。它靠 permission 前缀归主数据域所有，停用主数据域时整个门户收起。
+顶级目录 `path = /owner`、`permission = wms_master_data:portal:view`、`component` 为空。它靠 permission 前缀归主数据域所有，停用主数据域时整个门户收起。每个子菜单的**域归属由 permission 前缀表达**，component 是组件文件的物理路径、不参与归属判定——门户页面统一放在 `wms_master_data/portal/` 目录下，不按业务域拆目录，避免与后台页面目录混在一起。
 
 | 子菜单 | component | 权限 | 可见角色 | 期次 |
 |---|---|---|---|---|
 | 概览 | `wms_master_data/portal/dashboard/index` | `wms_master_data:portal:view` | 全部 | P1 |
-| 我的库存 | `wms_inventory/portal/stock/index` | `wms_inventory:stock:list` | 全部 | P1 |
-| 我的商品 | `wms_master_data/portal/sku/index` | `wms_master_data:sku:list` | 全部，新建按角色 | P1 |
+| 库存查询 | `wms_master_data/portal/stock/index` | `wms_inventory:portal:stock:view` | 全部 | P1 |
+| 商品档案 | `wms_master_data/portal/sku/index` | `wms_master_data:portal:view` | 全部，新建按角色 | P1 |
 | 子账号 | `wms_master_data/portal/account/index` | `wms_master_data:subaccount:list` | 仅主账号 | P1 |
-| 入库预报 | `wms_inbound/portal/asn/index` | `wms_inbound:asn:list` | 全部，新建按角色 | P2 |
-| 服务订单 | `wms_inbound/portal/service_order/index` | `wms_inbound:service_order:list` | 全部，新建按角色 | P2 |
-| 出库订单 | `wms_outbound/portal/order/index` | `wms_outbound:order:list` | 全部，新建按角色 | P3 |
-| 我的账单 | `wms_billing/portal/invoice/index` | `wms_billing:invoice:list` | 全部 | P8 |
+| 入库预报 | `wms_master_data/portal/asn/index` | `wms_inbound:portal:asn:create` | 全部，新建按角色 | P2 |
+| 出库订单 | `wms_master_data/portal/order/index` | `wms_outbound:portal:order:create` | 全部，新建按角色 | P3 |
+| 账单查询 | `wms_master_data/portal/bill/index` | `wms_billing:portal:bill:view` | 全部 | P8，待 `wms_billing` 插件落地后接入真实数据 |
 
 门户页面按 1280 以上宽度设计，不做窄屏适配（D18）。
 
@@ -132,7 +133,7 @@ frontend/src/
 | 期 | 新增页面 | 数量 |
 |---|---|---|
 | P0 | 后台布局改造、门户布局骨架、登录后落点判定 | 3 |
-| P1 | 后台主数据 6 + 库存 2，门户 4 | 12 |
+| P1 | 后台主数据 8 + 库存 2，门户 4 | 14 |
 | P2 | 后台入库 4 + 留样 1 + 批次 1 + 待处置 1，门户 2 | 9 |
 | P3 | 后台出库 4，门户 1 | 5 |
 | P4 | 后台波次规则 1 + 波次 1 + 分播 1 + 补货 1 | 4 |
@@ -142,6 +143,14 @@ frontend/src/
 | P8 | 后台计费 3，门户 1 | 4 |
 
 两处期次说明：留样页在 P2 交付而非 P5，因为留样记录在收货时就产生，没有列表页就没法确认生成对不对；P5 只补到期处置入口。作业端在 P5 一次交付 6 个页面（任务列表、任务执行、分播、打包、扫码、登录），因为 APK 打包要一次做完。
+
+### 班组与人员两个视图
+
+班组管理 `wms_master_data/team/index` 与人员档案 `wms_master_data/staff/index` 在同一模块下，共用一份归属数据：班组保存后人员行的班组列与班组长标签同步，人员调组后班组行的成员数与在岗数重算。
+
+班组视图有全部／楼层／启用／停用状态页签、六类查询条件、区域覆盖读数与右侧班组抽屉。抽屉分段为基本信息和作业位置，字段含名称、状态、楼层、管辖区域、班组长、在办上限默认；操作列给编辑、成员、启停与删除。行内「成员」跳到人员视图并预置班组条件。
+
+人员视图有在岗／不在岗页签、十一类查询条件（常用三项常显、其余收起）、条件回显与批量栏。人员抽屉分段为基本信息和班组归属（班组长置灰）、离职处置（仅待离职显示）、可做工序、认证与质检持证、最近记录。人员页不提供新建入口，新增人员通过用户管理创建账号自动生成档案；姓名、手机号与账号状态只读展示，无账号的历史档案不提供编辑入口。
 
 ## 表单与校验
 

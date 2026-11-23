@@ -1,8 +1,8 @@
 """Menu management routes."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.deps import _build_menu_tree, get_current_user, require_permission
@@ -16,9 +16,16 @@ from src.schemas import MenuCreate, MenuUpdate
 router = APIRouter(prefix="/menus", tags=["菜单管理"])
 
 
-async def _validate_parent(db: AsyncSession, parent_id: int, menu_id: int | None = None) -> None:
-    """Validate that a menu parent exists and cannot create an invalid hierarchy."""
+async def _validate_parent(
+    db: AsyncSession,
+    parent_id: int,
+    menu_id: int | None = None,
+    scope: Literal["admin", "owner"] | None = None,
+) -> None:
+    """Validate parent existence, hierarchy, and admin/owner scope consistency."""
     if parent_id == 0:
+        if scope == "owner":
+            raise ValidationException("货主门户菜单必须挂在「货主门户」目录下")
         return
 
     menus = await crud_menu.get_tree(db)
@@ -28,6 +35,8 @@ async def _validate_parent(db: AsyncSession, parent_id: int, menu_id: int | None
         raise ValidationException(t("menu.parent_not_found"))
     if parent.type == "F":
         raise ValidationException(t("menu.button_cannot_be_parent"))
+    if scope is not None and _is_owner_branch(parent, by_id) != (scope == "owner"):
+        raise ValidationException("菜单父节点与当前端不一致，不能跨端移动")
 
     visited: set[int] = set()
     current_id = parent_id
@@ -43,14 +52,38 @@ async def _validate_parent(db: AsyncSession, parent_id: int, menu_id: int | None
         current_id = current.parent_id
 
 
+def _is_owner_branch(menu, by_id: dict) -> bool:
+    """判断菜单是否属于 /owner 子树（自身或任一祖先是 /owner 顶级目录）。"""
+    seen = set()
+    current = menu
+    while current and current.id not in seen:
+        if current.path == "/owner" and current.parent_id == 0:
+            return True
+        seen.add(current.id)
+        current = by_id.get(current.parent_id)
+    return False
+
+
+def _filter_scope(menus, scope: Literal["admin", "owner"] | None):
+    """按端过滤：owner 取 /owner 整支，admin 取其余分支；不传时全量。"""
+    if scope is None:
+        return menus
+    by_id = {m.id: m for m in menus}
+    return [
+        m for m in menus
+        if _is_owner_branch(m, by_id) == (scope == "owner")
+    ]
+
+
 @router.get("/tree")
 async def menu_tree(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_permission("system:menu:list"))],
+    scope: Literal["admin", "owner"] | None = Query(None),
 ):
-    """Get the full menu tree (flat list → tree on server side)."""
+    """Get the menu tree; scope=admin|owner limits to one side's branch."""
     menus = await crud_menu.get_tree(db)
-    tree = _build_menu_tree(menus)
+    tree = _build_menu_tree(_filter_scope(menus, scope))
     return success_response(data=tree)
 
 
@@ -61,8 +94,8 @@ async def create_menu(
     user: Annotated[User, Depends(require_permission("system:menu:add"))],
 ):
     """Create a new menu item."""
-    await _validate_parent(db, body.parent_id)
-    new_menu = await crud_menu.create(db, body.model_dump())
+    await _validate_parent(db, body.parent_id, scope=body.scope)
+    new_menu = await crud_menu.create(db, body.model_dump(exclude={"scope"}))
     return success_response(data={"id": new_menu.id}, msg=t("menu.created"))
 
 
@@ -78,12 +111,12 @@ async def update_menu(
     if not existing:
         raise NotFoundException(t("menu.not_found"))
 
-    update_data = body.model_dump(exclude_unset=True)
+    update_data = body.model_dump(exclude_unset=True, exclude={"scope"})
     if "parent_id" in update_data:
         # The frontend sends null when a clearable parent selector is emptied.
         # Persist root menus using the system-wide parent_id=0 convention.
         update_data["parent_id"] = update_data["parent_id"] or 0
-        await _validate_parent(db, update_data["parent_id"], menu_id)
+        await _validate_parent(db, update_data["parent_id"], menu_id, scope=body.scope)
 
     updated = await crud_menu.update(db, menu_id, update_data)
     if not updated:

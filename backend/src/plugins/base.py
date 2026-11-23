@@ -169,6 +169,10 @@ class PluginInterface(ABC):
         """Optional login guard executed before core credential validation."""
         return None
 
+    async def after_user_created(self, user_id: int, username: str) -> None:
+        """Optional hook executed after a core user account is created."""
+        return None
+
     def on_load(self) -> None:
         """Optional: called when the plugin is first loaded into memory."""
         pass

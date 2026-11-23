@@ -29,7 +29,8 @@ export const deleteRole = (id: number) => request.delete(`/roles/${id}`)
 export const getAllRoles = () => request.get('/roles/all')
 
 // ---- Menus ----
-export const getMenuTree = () => request.get('/menus/tree')
+export const getMenuTree = (scope?: 'admin' | 'owner') =>
+  request.get('/menus/tree', { params: scope ? { scope } : undefined })
 export const createMenu = (data: any) => request.post('/menus', data)
 export const updateMenu = (id: number, data: any) => request.put(`/menus/${id}`, data)
 export const deleteMenu = (id: number) => request.delete(`/menus/${id}`)

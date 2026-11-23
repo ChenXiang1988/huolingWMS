@@ -93,8 +93,8 @@
       </template>
     </nav>
 
-    <!-- Bottom upgrade card -->
-    <div class="sidebar-footer">
+    <!-- Bottom upgrade card — 门户不展示后台专属的升级入口 -->
+    <div v-if="!portal" class="sidebar-footer">
       <div class="upgrade-card">
         <img class="upgrade-img" src="/assets/images/sidebar/2.png" alt="" />
         <h5>{{ t('common.sidebar.upgradeTitle') }}</h5>
@@ -118,6 +118,7 @@ const props = defineProps<{
   collapsed: boolean
   isMobile?: boolean
   mobileOpen?: boolean
+  portal?: boolean
 }>()
 defineEmits<{
   (e: 'toggle'): void
@@ -138,9 +139,16 @@ const openedTopMenus = ref<Record<string | number, boolean>>({})
 // 子菜单数量超过该值则默认收起（避免大量子菜单平铺过长）
 const DEFAULT_COLLAPSE_THRESHOLD = 12
 
-// 过滤掉 F 类型（按钮）与货主门户（独立入口，不进后台侧栏），只保留 M/C 用于渲染
+// 后台侧栏过滤货主门户目录；门户侧栏把 /owner 的子项提升为顶级 C 菜单。
+// 若把 /owner 目录本身当 M 渲染，resolvePath 会得到 /owner/dashboard，
+// 再叠加 router 的 /owner/ base 变成双前缀。两种模式都排除 F 类按钮。
 const menuTree = computed(() => {
-  return (userStore.menus || []).filter((m: any) => m.type !== 'F' && m.path !== '/owner')
+  const menus = (userStore.menus || []).filter((m: any) => m.type !== 'F')
+  if (props.portal) {
+    const portal = menus.find((m: any) => m.path === '/owner')
+    return (portal?.children || []).filter((m: any) => m.type !== 'F')
+  }
+  return menus.filter((m: any) => m.path !== '/owner')
 })
 
 // 判断当前路由是否命中某顶级目录下的菜单

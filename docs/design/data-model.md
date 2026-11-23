@@ -27,11 +27,17 @@
 | `barcode` | id, sku_id, barcode, barcode_type | `barcode` 唯一 |
 | `unit` | id, code, name, decimal_places | `code` 唯一 |
 | `partner` | id, code, name, partner_type, contact, phone, address, status | `code` 唯一；`partner_type` = supplier / customer |
-| `team` | id, code, name, function_type, leader_staff_id, status, remark | `code` 唯一；`function_type` = receiving / putaway / picking / sorting / checking / shipping / internal_ops / other；`leader_staff_id` 指向 `staff.id`，可空 |
-| `staff` | id, code, name, phone, user_id, team_id, status, remark | `code`（工号）全仓唯一；`user_id` 可空且唯一（空=临时工）；索引 `(team_id, status)`；离职改 `status`，不删除 |
+| `team` | id, code, name, function_type, leader_staff_id, status, floor_no, dispatch_limit_default, remark | `code` 唯一且删除后不回收；`function_type` = receiving / putaway / picking / sorting / checking / shipping / internal_ops / other；`leader_staff_id` 指向 `staff.id`，每组恰一名；`floor_no` 取自 `zone.floor_no`；`dispatch_limit_default` 为 1–20，空继承仓级默认 3 |
+| `staff` | id, code, name, phone, role, user_id, team_id, status, left_pending_at, left_at, quality_cert, quality_team, remark | `code`（工号）全仓唯一，新建账号生成的档案用工号等于 `username`；`user_id` 必填且唯一，指向 `sys_user.id`，历史无账号档案封存为不在岗；`name`/`phone` 是兼容列，展示与搜索以用户管理的 `nickname`/`phone` 为准，`account_status` 从 `sys_user.status` 投影不落列；`status`：0=不在岗、1=在岗；`left_at` 有值为离职终态不可回退，`left_pending_at` 有值时仍在岗；索引 `(team_id, status)` |
+| `team_zone` | id, team_id, zone_id | `(team_id, zone_id)` 唯一；一区多组合法，不做区域唯一约束 |
+| `staff_skill` | id, staff_id, process_code | `(staff_id, process_code)` 唯一；按工序码存储，字典外码原样保留 |
+| `staff_cert` | id, staff_id, cert_type, expire_on | `(staff_id, cert_type)` 唯一；到期日只用于显示与筛选 |
+| `staff_log` | id, staff_id, kind, from_team_id, to_team_id, reason, operator_id, occurred_at | `kind=team` 为归属记录；索引 `(staff_id, occurred_at)`；只追加不修改 |
 | `sequence` | id, prefix, period, current | `(prefix, period)` 唯一 |
 | `print_template` | id, code, name, template_type, paper_width, paper_height, content, version, status | 同类型只允许一个启用；`content` 为 hiprint 的 JSON |
 | `print_task` | id, ref_type, ref_id, template_id, template_version, printer_name, client_id, status, error_msg, reprint_times, operator_id, created_at | 索引 `(ref_type, ref_id)`、`(created_at)`；按月归档，只留近 90 天 |
+
+班组与人员的状态口径：班组 `status` 0=停用、1=启用，停用只把组移出派工候选，成员归属与作业位置保留，启用后恢复；人员 `status` 0=不在岗、1=在岗，离职是不可回退的终态，用 `left_at` 标记，待处置用 `left_pending_at` 标记，两者都不新增状态值。配置状态（已配置／待配置）按是否归组且有工序能力派生，不落列。
 
 ### `wms_master_data_sku` 货品档案
 

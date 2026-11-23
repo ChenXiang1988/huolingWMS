@@ -6,6 +6,7 @@
 """
 import hashlib
 import secrets
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Optional
 
@@ -21,16 +22,28 @@ from src.db import get_db
 from src.models import User
 from src.plugins.builtin.wms_master_data import models as m
 from src.plugins.builtin.wms_master_data.service import (
+    affected_members,
+    bulk_transfer_team,
     create_owner,
     create_staff,
+    create_team,
+    delete_team as remove_team,
+    finish_leave,
     get_staff_by_user,
     join_team,
     leave_team,
+    list_staffs as query_staffs,
+    list_teams as query_teams,
+    mark_leave_pending,
     next_code,
+    set_staff_certs,
+    set_staff_skills,
     set_team_leader,
     toggle_team,
     transfer_team,
     update_staff,
+    update_team,
+    zone_coverage,
 )
 
 router = APIRouter(prefix="/wms-master-data", tags=["主数据"])
@@ -994,41 +1007,49 @@ async def rotate_apikey(
 # ── 职能班组 ─────────────────────────────────────────
 
 
+def _dt(value: Optional[str]) -> Optional[datetime]:
+    return datetime.fromisoformat(value) if value else None
+
+
 class TeamIn(BaseModel):
-    code: str = Field(..., max_length=64)
-    name: str = Field(..., max_length=100)
+    name: str = Field(..., min_length=1, max_length=20)
     function_type: str = Field(
         "other",
         pattern=r"^(receiving|putaway|picking|sorting|checking|shipping|internal_ops|other)$",
     )
+    leader_staff_id: int
+    floor_no: int
+    zone_ids: list[int] = Field(..., min_length=1)
+    dispatch_limit_default: Optional[int] = Field(None, ge=1, le=20)
     remark: Optional[str] = None
 
 
 @router.get("/teams", summary="班组列表")
-async def list_teams(
+async def list_teams_route(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_permission("wms_master_data:team:list"))],
     status: Optional[int] = Query(None),
+    keyword: Optional[str] = Query(None),
+    leader_name: Optional[str] = Query(None),
+    floor_no: Optional[int] = Query(None),
+    process_code: Optional[str] = Query(None),
+    zone_id: Optional[int] = Query(None),
+    updated_from: Optional[str] = Query(None),
+    updated_to: Optional[str] = Query(None),
 ):
-    cond = []
-    if status is not None:
-        cond.append(m.WmsTeam.status == status)
-    rows = (
-        await db.execute(select(m.WmsTeam).where(*cond).order_by(m.WmsTeam.id))
-    ).scalars().all()
-    return success_response(
-        data=[
-            {
-                "id": r.id,
-                "code": r.code,
-                "name": r.name,
-                "function_type": r.function_type,
-                "leader_staff_id": r.leader_staff_id,
-                "status": r.status,
-            }
-            for r in rows
-        ]
-    )
+    return success_response(data=await query_teams(
+        db, status=status, keyword=keyword, leader_name=leader_name,
+        floor_no=floor_no, process_code=process_code, zone_id=zone_id,
+        updated_from=_dt(updated_from), updated_to=_dt(updated_to),
+    ))
+
+
+@router.get("/teams/coverage", summary="区域覆盖读数")
+async def team_coverage(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:team:list"))],
+):
+    return success_response(data=await zone_coverage(db))
 
 
 @router.post("/teams", summary="新建班组")
@@ -1037,14 +1058,13 @@ async def post_team(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_permission("wms_master_data:team:create"))],
 ):
-    row = m.WmsTeam(**payload.model_dump(), status=1)
-    db.add(row)
     try:
+        team = await create_team(db, **payload.model_dump())
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
-        raise ValidationException(f"班组编码 {payload.code} 已占用") from exc
-    return success_response(data={"id": row.id})
+        raise ValidationException("班组编号或名称冲突") from exc
+    return success_response(data={"id": team.id, "code": team.code})
 
 
 @router.put("/teams/{team_id}", summary="编辑班组")
@@ -1054,23 +1074,27 @@ async def put_team(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_permission("wms_master_data:team:edit"))],
 ):
-    row = (
-        await db.execute(select(m.WmsTeam).where(m.WmsTeam.id == team_id))
-    ).scalars().first()
-    if row is None:
-        raise NotFoundException("班组不存在")
-    row.name = payload.name
-    row.function_type = payload.function_type
-    row.remark = payload.remark
+    team = await update_team(db, team_id, **payload.model_dump())
     await db.commit()
-    return success_response(data={"id": row.id})
+    return success_response(data={"id": team.id})
+
+
+@router.delete("/teams/{team_id}", summary="删除班组")
+async def delete_team_route(
+    team_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:team:delete"))],
+):
+    await remove_team(db, team_id)
+    await db.commit()
+    return success_response(data={"id": team_id})
 
 
 class LeaderIn(BaseModel):
     staff_id: Optional[int] = None
 
 
-@router.put("/teams/{team_id}/leader", summary="指定或清空班长")
+@router.put("/teams/{team_id}/leader", summary="指定或清空班组长")
 async def put_team_leader(
     team_id: int,
     payload: LeaderIn,
@@ -1092,8 +1116,11 @@ async def toggle_team_status(
     enabled: bool = Query(...),
 ):
     team = await toggle_team(db, team_id, enabled)
+    members = await affected_members(db, team_id) if not enabled else []
     await db.commit()
-    return success_response(data={"id": team.id, "status": team.status})
+    return success_response(data={
+        "id": team.id, "status": team.status, "affected_staff_ids": members,
+    })
 
 
 # ── 人员档案 ─────────────────────────────────────────
@@ -1101,50 +1128,64 @@ async def toggle_team_status(
 
 class StaffIn(BaseModel):
     code: str = Field(..., max_length=64)
-    name: str = Field(..., max_length=100)
-    phone: Optional[str] = None
-    user_id: Optional[int] = None
+    user_id: int
+    role: Optional[str] = Field(None, max_length=32)
 
 
 class StaffUpdateIn(BaseModel):
-    name: str = Field(..., max_length=100)
-    phone: Optional[str] = None
     status: int = Field(1, ge=0, le=1)
+    role: Optional[str] = Field(None, max_length=32)
+    quality_cert: Optional[int] = Field(None, ge=0, le=1)
+    quality_team: Optional[str] = Field(None, max_length=64)
 
 
 class TeamAssignIn(BaseModel):
     team_id: int
 
 
+class BulkTeamIn(BaseModel):
+    staff_ids: list[int]
+    team_id: Optional[int] = None
+
+
+class SkillsIn(BaseModel):
+    process_codes: list[str]
+
+
+class CertIn(BaseModel):
+    cert_type: str = Field(..., max_length=32)
+    expire_on: Optional[str] = None
+
+
+class CertsIn(BaseModel):
+    certs: list[CertIn]
+
+
 @router.get("/staffs", summary="人员列表")
-async def list_staffs(
+async def list_staffs_route(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_permission("wms_master_data:staff:list"))],
     team_id: Optional[int] = Query(None),
     status: Optional[int] = Query(None),
+    keyword: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
+    leader_flag: Optional[str] = Query(None),
+    process_code: Optional[str] = Query(None),
+    cert_type: Optional[str] = Query(None),
+    config_state: Optional[str] = Query(None),
+    employment_state: Optional[str] = Query(None),
+    bound_state: Optional[str] = Query(None),
+    cert_expiry: Optional[str] = Query(None),
+    last_op_from: Optional[str] = Query(None),
+    last_op_to: Optional[str] = Query(None),
 ):
-    cond = []
-    if team_id is not None:
-        cond.append(m.WmsStaff.team_id == team_id)
-    if status is not None:
-        cond.append(m.WmsStaff.status == status)
-    rows = (
-        await db.execute(select(m.WmsStaff).where(*cond).order_by(m.WmsStaff.id))
-    ).scalars().all()
-    return success_response(
-        data=[
-            {
-                "id": r.id,
-                "code": r.code,
-                "name": r.name,
-                "phone": r.phone,
-                "user_id": r.user_id,
-                "team_id": r.team_id,
-                "status": r.status,
-            }
-            for r in rows
-        ]
-    )
+    return success_response(data=await query_staffs(
+        db, team_id=team_id, status=status, keyword=keyword, role=role,
+        leader_flag=leader_flag, process_code=process_code, cert_type=cert_type,
+        config_state=config_state, employment_state=employment_state,
+        bound_state=bound_state, cert_expiry=cert_expiry,
+        last_op_from=_dt(last_op_from), last_op_to=_dt(last_op_to),
+    ))
 
 
 @router.get("/staffs/by-user/{user_id}", summary="按账号查在职人员")
@@ -1163,13 +1204,7 @@ async def post_staff(
     user: Annotated[User, Depends(require_permission("wms_master_data:staff:create"))],
 ):
     try:
-        staff = await create_staff(
-            db,
-            code=payload.code,
-            name=payload.name,
-            phone=payload.phone,
-            user_id=payload.user_id,
-        )
+        staff = await create_staff(db, **payload.model_dump())
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()
@@ -1184,11 +1219,97 @@ async def put_staff(
     db: Annotated[AsyncSession, Depends(get_db)],
     user: Annotated[User, Depends(require_permission("wms_master_data:staff:edit"))],
 ):
-    staff = await update_staff(
-        db, staff_id, name=payload.name, phone=payload.phone, status=payload.status
-    )
+    staff = await update_staff(db, staff_id, **payload.model_dump())
     await db.commit()
     return success_response(data={"id": staff.id, "status": staff.status})
+
+
+@router.put("/staffs/{staff_id}/skills", summary="维护可做工序")
+async def put_staff_skills(
+    staff_id: int,
+    payload: SkillsIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:skill"))],
+):
+    staff = await set_staff_skills(db, staff_id, payload.process_codes)
+    await db.commit()
+    return success_response(data={"id": staff.id, "skills": payload.process_codes})
+
+
+@router.put("/staffs/{staff_id}/certs", summary="维护认证")
+async def put_staff_certs(
+    staff_id: int,
+    payload: CertsIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:cert"))],
+):
+    certs = [
+        {"cert_type": c.cert_type, "expire_on": _dt(c.expire_on).date() if c.expire_on else None}
+        for c in payload.certs
+    ]
+    staff = await set_staff_certs(db, staff_id, certs)
+    await db.commit()
+    return success_response(data={"id": staff.id, "certs": certs})
+
+
+@router.get("/staffs/{staff_id}/logs", summary="人员最近记录")
+async def staff_logs(
+    staff_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:list"))],
+    limit: int = Query(10, ge=1, le=50),
+):
+    rows = (await db.execute(
+        select(m.WmsStaffLog)
+        .where(m.WmsStaffLog.staff_id == staff_id)
+        .order_by(m.WmsStaffLog.occurred_at.desc())
+        .limit(limit)
+    )).scalars().all()
+    return success_response(data=[
+        {
+            "id": r.id,
+            "kind": r.kind,
+            "from_team_id": r.from_team_id,
+            "to_team_id": r.to_team_id,
+            "reason": r.reason,
+            "operator_id": r.operator_id,
+            "occurred_at": r.occurred_at.isoformat(),
+        }
+        for r in rows
+    ])
+
+
+@router.post("/staffs/bulk-team", summary="批量调组")
+async def bulk_staff_team(
+    payload: BulkTeamIn,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:bulk-team"))],
+):
+    result = await bulk_transfer_team(db, payload.staff_ids, payload.team_id)
+    await db.commit()
+    return success_response(data=result)
+
+
+@router.post("/staffs/{staff_id}/leave", summary="确认离职生效")
+async def confirm_staff_leave(
+    staff_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:leave"))],
+):
+    staff = await finish_leave(db, staff_id, operator_id=user.id)
+    await db.commit()
+    return success_response(data={"id": staff.id, "status": staff.status})
+
+
+@router.post("/staffs/{staff_id}/leave/pending", summary="标记待离职")
+async def pending_staff_leave(
+    staff_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(require_permission("wms_master_data:staff:leave"))],
+):
+    staff = await mark_leave_pending(db, staff_id)
+    await db.commit()
+    return success_response(data={"id": staff.id})
 
 
 @router.post("/staffs/{staff_id}/team", summary="人员加入班组")

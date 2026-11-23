@@ -10,6 +10,12 @@ export const portalSkus = () => request.get('/wms-master-data/portal/skus')
 export const portalCreateAsn = (data: any) =>
   request.post('/wms-inbound/portal/asns', data)
 
+/** 本货主提交的入库预报列表与详情。 */
+export const portalAsns = (params?: any) =>
+  request.get('/wms-inbound/portal/asns', { params })
+export const portalAsnDetail = (id: number) =>
+  request.get(`/wms-inbound/portal/asns/${id}`)
+
 /** 货主自助建出库订单。请求体里没有 owner_id。 */
 export const portalCreateOrder = (data: any) =>
   request.post('/wms-outbound/portal/orders', data)
@@ -21,3 +27,23 @@ export const portalOrders = (params: any) =>
 /** 本货主某一单的明细，别家货主的单返回 404。 */
 export const portalOrderDetail = (id: number) =>
   request.get(`/wms-outbound/portal/orders/${id}`)
+
+/** 货主自助创建商品档案（只提交"这是什么货"字段）。 */
+export const portalCreateSku = (data: any) =>
+  request.post('/wms-master-data/portal/skus', data)
+
+/** 本货主库存（按商品与状态聚合）与批次库位明细。 */
+export const portalStocks = (params?: any) =>
+  request.get('/wms-inventory/portal/stocks', { params })
+export const portalStockDetail = (skuId: number, params?: any) =>
+  request.get('/wms-inventory/portal/stocks/detail', { params: { sku_id: skuId, ...params } })
+
+/** 本货主库存流水。 */
+export const portalTxns = (params?: any) =>
+  request.get('/wms-inventory/portal/txns', { params })
+
+/** 本货主账单与明细（计费上线前返回空列表）。 */
+export const portalBills = (params?: any) =>
+  request.get('/wms-master-data/portal/bills', { params })
+export const portalBillItems = (billId: number) =>
+  request.get(`/wms-master-data/portal/bills/${billId}/items`)

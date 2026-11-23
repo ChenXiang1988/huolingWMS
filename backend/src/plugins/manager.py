@@ -452,6 +452,12 @@ class PluginManager:
             if info.runtime_state == "active" and info.instance:
                 await info.instance.before_login(payload)
 
+    async def after_user_created(self, user_id: int, username: str) -> None:
+        """Let active plugins react to a newly created core user account."""
+        for info in self._plugins.values():
+            if info.runtime_state == "active" and info.instance:
+                await info.instance.after_user_created(user_id, username)
+
     def _register_runtime(self, name: str, info: PluginInfo, app: FastAPI) -> dict[str, int]:
         from src.mcp import mcp_manager
 

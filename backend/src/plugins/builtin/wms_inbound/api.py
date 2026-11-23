@@ -739,3 +739,84 @@ async def portal_create_asn(
     data = {"id": asn.id, "code": asn.code, "owner_id": ctx.owner_id}
     await db.commit()
     return success_response(data=data)
+
+
+@router.get("/portal/asns", summary="货主门户预报列表")
+async def portal_list_asns(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+):
+    """只看本货主的预报，owner_id 取会话绑定，不接收请求体里的 owner_id。"""
+    from src.plugins.builtin.wms_master_data.portal import owner_of_user
+
+    ctx = await owner_of_user(db, user.id)
+    base = select(m.WmsAsn).where(m.WmsAsn.owner_id == ctx.owner_id)
+    total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
+    rows = (
+        await db.execute(
+            base.order_by(m.WmsAsn.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).scalars().all()
+    return success_response(data={
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "items": [
+            {
+                "id": r.id,
+                "code": r.code,
+                "owner_doc_no": r.owner_doc_no,
+                "status": r.status,
+                "source": r.source,
+                "expect_arrive_at": r.expect_arrive_at.isoformat() if r.expect_arrive_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    })
+
+
+@router.get("/portal/asns/{asn_id}", summary="货主门户预报详情")
+async def portal_get_asn(
+    asn_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user: Annotated[User, Depends(get_current_user)],
+):
+    """别家货主的预报返回 404，不泄露该单是否存在。"""
+    from src.plugins.builtin.wms_master_data.portal import owner_of_user
+
+    ctx = await owner_of_user(db, user.id)
+    asn = (
+        await db.execute(
+            select(m.WmsAsn).where(
+                m.WmsAsn.id == asn_id,
+                m.WmsAsn.owner_id == ctx.owner_id,
+            )
+        )
+    ).scalars().first()
+    if asn is None:
+        raise NotFoundException("预报不存在")
+
+    lines = (
+        await db.execute(
+            select(m.WmsAsnLine).where(m.WmsAsnLine.asn_id == asn.id)
+        )
+    ).scalars().all()
+    return success_response(data={
+        "id": asn.id,
+        "code": asn.code,
+        "owner_doc_no": asn.owner_doc_no,
+        "status": asn.status,
+        "source": asn.source,
+        "expect_arrive_at": asn.expect_arrive_at.isoformat() if asn.expect_arrive_at else None,
+        "remark": asn.remark,
+        "created_at": asn.created_at.isoformat() if asn.created_at else None,
+        "lines": [
+            {"sku_id": line.sku_id, "expect_qty": str(line.expect_qty)}
+            for line in lines
+        ],
+    })

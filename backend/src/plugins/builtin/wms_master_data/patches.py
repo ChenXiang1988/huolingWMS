@@ -20,6 +20,17 @@ _COLUMNS: dict[str, dict[str, str]] = {
         "settle_period": "VARCHAR(32)",
         "remark": "VARCHAR(255)",
     },
+    "wms_master_data_team": {
+        "floor_no": "INTEGER",
+        "dispatch_limit_default": "INTEGER",
+    },
+    "wms_master_data_staff": {
+        "role": "VARCHAR(32)",
+        "left_pending_at": "DATETIME",
+        "left_at": "DATETIME",
+        "quality_cert": "INTEGER DEFAULT 0",
+        "quality_team": "VARCHAR(64)",
+    },
 }
 
 

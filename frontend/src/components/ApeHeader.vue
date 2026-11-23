@@ -64,14 +64,14 @@
             <el-icon :size="18"><Moon v-if="!isDark" /><Sunny v-else /></el-icon>
           </li>
 
-          <!-- Version update (replaces bookmark) -->
-          <li v-if="canViewVersion && (!isMobile || windowWidth > 575)" class="icon-item version-update-btn" :class="{ 'has-update': hasNewVersion }" :title="hasNewVersion ? `${t('common.versionUpdate.availablePrefix')} v${latestVersionLabel}` : ''" @click="versionUpdateVisible = true">
+          <!-- Version update (replaces bookmark) — 后台专属 -->
+          <li v-if="!portal && canViewVersion && (!isMobile || windowWidth > 575)" class="icon-item version-update-btn" :class="{ 'has-update': hasNewVersion }" :title="hasNewVersion ? `${t('common.versionUpdate.availablePrefix')} v${latestVersionLabel}` : ''" @click="versionUpdateVisible = true">
             <el-icon :size="18"><RefreshRight /></el-icon>
             <span v-if="hasNewVersion" class="update-dot"></span>
           </li>
 
-          <!-- Notifications -->
-          <li class="icon-item has-badge" @click="notifVisible = !notifVisible">
+          <!-- Notifications — 后台专属 -->
+          <li v-if="!portal" class="icon-item has-badge" @click="notifVisible = !notifVisible">
             <el-icon :size="18"><Bell /></el-icon>
             <span class="badge-num">{{ notifications.length }}</span>
             <div v-if="notifVisible" class="dropdown-panel notif-panel">
@@ -85,8 +85,8 @@
             </div>
           </li>
 
-          <!-- Messages (hidden on mobile ≤767px) -->
-          <li v-if="!isMobile || windowWidth > 767" class="icon-item" @click="msgVisible = !msgVisible">
+          <!-- Messages (hidden on mobile ≤767px) — 后台专属 -->
+          <li v-if="!portal && (!isMobile || windowWidth > 767)" class="icon-item" @click="msgVisible = !msgVisible">
             <el-icon :size="18"><ChatDotRound /></el-icon>
           </li>
 
@@ -105,8 +105,8 @@
               </div>
             </div>
             <ul v-if="profileVisible" class="profile-dropdown">
-              <li><a @click="$emit('profile')"><el-icon :size="16"><User /></el-icon><span>{{ t('auth.profile') }}</span></a></li>
-              <li><a @click="$emit('settings')"><el-icon :size="16"><Setting /></el-icon><span>{{ t('common.header.systemSettings') }}</span></a></li>
+              <li v-if="!portal"><a @click="$emit('profile')"><el-icon :size="16"><User /></el-icon><span>{{ t('auth.profile') }}</span></a></li>
+              <li v-if="!portal"><a @click="$emit('settings')"><el-icon :size="16"><Setting /></el-icon><span>{{ t('common.header.systemSettings') }}</span></a></li>
               <li><a @click="handleLogout"><el-icon :size="16"><SwitchButton /></el-icon><span>{{ t('auth.logout') }}</span></a></li>
             </ul>
           </li>
@@ -143,6 +143,7 @@ const props = defineProps<{
   isDark?: boolean
   collapsed?: boolean
   isMobile?: boolean
+  portal?: boolean
 }>()
 const emit = defineEmits<{
   (e: 'toggle-theme'): void
@@ -300,6 +301,12 @@ function toggleFullscreen() {
 }
 
 async function handleLogout() {
+  if (props.portal) {
+    userStore.reset()
+    emit('logout')
+    router.push('/login')
+    return
+  }
   await userStore.logout()
   ElMessage.success(t('auth.logoutSuccess'))
   emit('logout')

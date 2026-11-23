@@ -17,8 +17,8 @@
 | 主数据 | 商品（基础信息） | list/create/edit/delete | `wms_master_data:sku:*` |
 | 主数据 | 商品（存储要求） | configure | `wms_master_data:sku:configure` |
 | 主数据 | 合作方 | list/create/edit/delete | `wms_master_data:partner:*` |
-| 主数据 | 班组 | list/create/edit | `wms_master_data:team:*` |
-| 主数据 | 人员档案 | list/create/edit | `wms_master_data:staff:*` |
+| 主数据 | 班组 | list/create/edit/delete | `wms_master_data:team:*` |
+| 主数据 | 人员档案（人员字段来自用户管理） | list/create/edit/bulk-team/skill/cert/leave | `wms_master_data:staff:*` |
 | 主数据 | 门户入口 | view | `wms_master_data:portal:view` |
 | 库存 | 库存 | list/view | `wms_inventory:stock:list` / `:view` |
 | 库存 | 库存调整 | create | `wms_inventory:adjust:create` |
@@ -95,14 +95,22 @@
 | PUT | `/wms-master-data/skus/{id}` | `wms_master_data:sku:edit`（仅基础信息组） |
 | PUT | `/wms-master-data/skus/{id}/storage` | `wms_master_data:sku:configure`（仅仓库侧字段） |
 | GET | `/wms-master-data/teams` | `wms_master_data:team:list` |
+| GET | `/wms-master-data/teams/coverage` | `wms_master_data:team:list` |
 | POST | `/wms-master-data/teams` | `wms_master_data:team:create` |
 | PUT | `/wms-master-data/teams/{team_id}` | `wms_master_data:team:edit` |
+| DELETE | `/wms-master-data/teams/{team_id}` | `wms_master_data:team:delete` |
 | PUT | `/wms-master-data/teams/{team_id}/leader` | `wms_master_data:team:edit` |
 | POST | `/wms-master-data/teams/{team_id}/toggle` | `wms_master_data:team:edit` |
 | GET | `/wms-master-data/staffs` | `wms_master_data:staff:list` |
 | GET | `/wms-master-data/staffs/by-user/{user_id}` | `wms_master_data:staff:list` |
 | POST | `/wms-master-data/staffs` | `wms_master_data:staff:create` |
 | PUT | `/wms-master-data/staffs/{staff_id}` | `wms_master_data:staff:edit` |
+| PUT | `/wms-master-data/staffs/{staff_id}/skills` | `wms_master_data:staff:skill` |
+| PUT | `/wms-master-data/staffs/{staff_id}/certs` | `wms_master_data:staff:cert` |
+| GET | `/wms-master-data/staffs/{staff_id}/logs` | `wms_master_data:staff:list` |
+| POST | `/wms-master-data/staffs/bulk-team` | `wms_master_data:staff:bulk-team` |
+| POST | `/wms-master-data/staffs/{staff_id}/leave` | `wms_master_data:staff:leave` |
+| POST | `/wms-master-data/staffs/{staff_id}/leave/pending` | `wms_master_data:staff:leave` |
 | POST | `/wms-master-data/staffs/{staff_id}/team` | `wms_master_data:staff:edit`（加入） |
 | PUT | `/wms-master-data/staffs/{staff_id}/team` | `wms_master_data:staff:edit`（调组） |
 | DELETE | `/wms-master-data/staffs/{staff_id}/team` | `wms_master_data:staff:edit`（退出） |
@@ -152,6 +160,8 @@
 | POST | `/wms-billing/invoices/{id}/confirm` | `wms_billing:invoice:confirm` |
 
 完整清单以各域 `api.py` 的 `APIRouter` 为准，上表覆盖需要跨域约定的部分。
+
+用户管理创建账号（预置 `admin` 除外）时自动生成人员档案，工号取 `username`；货主主账号由货主管理创建，不生成档案。人员档案的姓名、手机与账号状态从 `sys_user` 投影。`POST /wms-master-data/staffs` 只接收 `code`、`user_id`、`role`，`PUT /wms-master-data/staffs/{staff_id}` 不接收姓名与手机；人员列表和按账号查询返回 `account_status`。
 
 ## 对外接口
 

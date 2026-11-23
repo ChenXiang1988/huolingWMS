@@ -69,8 +69,10 @@ class WmsInventoryPlugin(PluginInterface):
         logger.info("[wms_inventory] uninstalled — 表与菜单已清理")
 
     def register(self, app: FastAPI) -> None:
-        """挂载库存域路由。"""
+        """挂载库存域路由（后台 + 货主门户只读视图）。"""
         from src.plugins.builtin.wms_inventory.api import router
+        from src.plugins.builtin.wms_inventory.portal_api import router as portal_router
 
         app.include_router(router, prefix=settings.API_PREFIX)
+        app.include_router(portal_router, prefix=settings.API_PREFIX)
         logger.info("[wms_inventory] registered — routes mounted")

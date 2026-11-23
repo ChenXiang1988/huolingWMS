@@ -67,23 +67,65 @@ export const rotateApiKey = (id: number) =>
   request.post(`/wms-master-data/apikeys/${id}/rotate`)
 
 // ── 班组与人员 ────────────────────────────
-export const listTeams = (params?: any) =>
+export interface TeamQuery {
+  status?: number
+  keyword?: string
+  leader_name?: string
+  floor_no?: number
+  process_code?: string
+  zone_id?: number
+  updated_from?: string
+  updated_to?: string
+}
+
+export interface StaffQuery {
+  team_id?: number
+  status?: number
+  keyword?: string
+  role?: string
+  leader_flag?: 'leader' | 'member'
+  process_code?: string
+  cert_type?: string
+  config_state?: 'configured' | 'pending'
+  employment_state?: 'active' | 'pending' | 'left'
+  bound_state?: 'bound' | 'unbound'
+  cert_expiry?: 'expired' | 'within_30' | 'valid'
+  last_op_from?: string
+  last_op_to?: string
+}
+
+export const listTeams = (params?: TeamQuery) =>
   request.get('/wms-master-data/teams', { params })
+export const teamCoverage = () => request.get('/wms-master-data/teams/coverage')
 export const createTeam = (data: any) => request.post('/wms-master-data/teams', data)
 export const updateTeam = (id: number, data: any) =>
   request.put(`/wms-master-data/teams/${id}`, data)
+export const deleteTeam = (id: number) =>
+  request.delete(`/wms-master-data/teams/${id}`)
 export const setTeamLeader = (id: number, staffId: number | null) =>
   request.put(`/wms-master-data/teams/${id}/leader`, { staff_id: staffId })
 export const toggleTeam = (id: number, enabled: boolean) =>
   request.post(`/wms-master-data/teams/${id}/toggle`, null, { params: { enabled } })
 
-export const listStaffs = (params?: any) =>
+export const listStaffs = (params?: StaffQuery) =>
   request.get('/wms-master-data/staffs', { params })
 export const getStaffByUser = (userId: number) =>
   request.get(`/wms-master-data/staffs/by-user/${userId}`)
 export const createStaff = (data: any) => request.post('/wms-master-data/staffs', data)
 export const updateStaff = (id: number, data: any) =>
   request.put(`/wms-master-data/staffs/${id}`, data)
+export const staffLogs = (id: number, limit = 10) =>
+  request.get(`/wms-master-data/staffs/${id}/logs`, { params: { limit } })
+export const setStaffSkills = (id: number, processCodes: string[]) =>
+  request.put(`/wms-master-data/staffs/${id}/skills`, { process_codes: processCodes })
+export const setStaffCerts = (id: number, certs: any[]) =>
+  request.put(`/wms-master-data/staffs/${id}/certs`, { certs })
+export const bulkStaffTeam = (staffIds: number[], teamId: number | null) =>
+  request.post('/wms-master-data/staffs/bulk-team', { staff_ids: staffIds, team_id: teamId })
+export const confirmStaffLeave = (id: number) =>
+  request.post(`/wms-master-data/staffs/${id}/leave`)
+export const pendingStaffLeave = (id: number) =>
+  request.post(`/wms-master-data/staffs/${id}/leave/pending`)
 export const joinStaffTeam = (id: number, teamId: number) =>
   request.post(`/wms-master-data/staffs/${id}/team`, { team_id: teamId })
 export const transferStaffTeam = (id: number, teamId: number) =>

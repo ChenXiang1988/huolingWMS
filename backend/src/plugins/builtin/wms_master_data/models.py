@@ -4,10 +4,11 @@
 字段与约束对齐 ``docs/design/data-model.md``，不在这里临时简化——P2 起入库、
 出库都会往这些表写数据，少一个字段就是一次补丁，改一个名字就是一层转换代码。
 """
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db import Base
@@ -238,7 +239,7 @@ class WmsSequence(IDMixin, TimestampMixin, Base):
 
 
 class WmsTeam(IDMixin, TimestampMixin, Base):
-    """职能班组。一人一组，班长须为本组在职成员，由 service 校验。"""
+    """作业班组。楼层与管辖区域来自仓库档案，班组长是本组成员。"""
 
     __tablename__ = "wms_master_data_team"
 
@@ -249,10 +250,16 @@ class WmsTeam(IDMixin, TimestampMixin, Base):
         comment="receiving/putaway/picking/sorting/checking/shipping/internal_ops/other",
     )
     leader_staff_id: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True, comment="班长 staff.id"
+        Integer, nullable=True, comment="班组长 staff.id"
     )
     status: Mapped[int] = mapped_column(
         Integer, default=1, nullable=False, comment="状态: 0=停用 1=启用"
+    )
+    floor_no: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="作业楼层，取自库区 floor_no"
+    )
+    dispatch_limit_default: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="组级在办上限默认 1-20，空继承仓级"
     )
     remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
@@ -268,6 +275,7 @@ class WmsStaff(IDMixin, TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, comment="工号")
     name: Mapped[str] = mapped_column(String(100), nullable=False, comment="姓名")
     phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    role: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, comment="岗位角色，用户中心同步")
     user_id: Mapped[Optional[int]] = mapped_column(
         Integer, unique=True, nullable=True, index=True,
         comment="绑定的 sys_user.id，空=临时工",
@@ -276,6 +284,70 @@ class WmsStaff(IDMixin, TimestampMixin, Base):
         Integer, nullable=True, comment="所属班组 id"
     )
     status: Mapped[int] = mapped_column(
-        Integer, default=1, nullable=False, comment="状态: 0=离职 1=在职"
+        Integer, default=1, nullable=False, comment="状态: 0=不在岗 1=在岗"
     )
+    left_pending_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, comment="待离职时间，有值时仍在岗"
+    )
+    left_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, comment="离职时间，终态不可逆"
+    )
+    quality_cert: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, comment="质检持证: 0=未持证 1=持证"
+    )
+    quality_team: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, comment="持证时的质检组")
     remark: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+
+class WmsTeamZone(IDMixin, TimestampMixin, Base):
+    """班组管辖区域。一区多组合法，不按区域做唯一约束。"""
+
+    __tablename__ = "wms_master_data_team_zone"
+    __table_args__ = (
+        UniqueConstraint("team_id", "zone_id", name="uq_team_zone"),
+    )
+
+    team_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    zone_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+
+
+class WmsStaffSkill(IDMixin, TimestampMixin, Base):
+    """人员可做的工序码，按码存储，字典外的码原样保留。"""
+
+    __tablename__ = "wms_master_data_staff_skill"
+    __table_args__ = (
+        UniqueConstraint("staff_id", "process_code", name="uq_staff_skill"),
+    )
+
+    staff_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    process_code: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class WmsStaffCert(IDMixin, TimestampMixin, Base):
+    """人员持证与到期日，到期只用于显示与筛选。"""
+
+    __tablename__ = "wms_master_data_staff_cert"
+    __table_args__ = (
+        UniqueConstraint("staff_id", "cert_type", name="uq_staff_cert"),
+    )
+
+    staff_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    cert_type: Mapped[str] = mapped_column(String(32), nullable=False, comment="如 forklift/quality_inspector")
+    expire_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+
+
+class WmsStaffLog(IDMixin, TimestampMixin, Base):
+    """人员操作与归属记录，kind=team 的每行是一条归属变更。"""
+
+    __tablename__ = "wms_master_data_staff_log"
+    __table_args__ = (
+        Index("ix_wms_staff_log_staff_time", "staff_id", "occurred_at"),
+    )
+
+    staff_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, comment="team/skill/cert/quality/leave")
+    from_team_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    to_team_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    operator_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

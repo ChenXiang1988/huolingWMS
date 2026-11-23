@@ -47,6 +47,24 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/wms_master_data/portal/order/index.vue'),
         meta: { title: '出库订单' },
       },
+      {
+        path: 'sku',
+        name: 'OwnerSku',
+        component: () => import('@/views/wms_master_data/portal/sku/index.vue'),
+        meta: { title: '商品档案', permission: 'wms_master_data:portal:view' },
+      },
+      {
+        path: 'stock',
+        name: 'OwnerStock',
+        component: () => import('@/views/wms_master_data/portal/stock/index.vue'),
+        meta: { title: '库存查询', permission: 'wms_inventory:portal:stock:view' },
+      },
+      {
+        path: 'bill',
+        name: 'OwnerBill',
+        component: () => import('@/views/wms_master_data/portal/bill/index.vue'),
+        meta: { title: '账单查询', permission: 'wms_billing:portal:bill:view' },
+      },
     ],
   },
   {

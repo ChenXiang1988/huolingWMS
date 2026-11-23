@@ -33,10 +33,19 @@ async def _ensure_menu(
     permission: str | None = None,
     icon: str | None = None,
     sort: int = 0,
+    align_fields: bool = False,
 ) -> Menu:
-    """按 (name, parent_id) 判重后创建菜单，返回已存在或新建的记录。"""
+    """按 (name, parent_id) 判重后创建菜单，返回已存在或新建的记录。
+
+    align_fields 仅用于归属迁移：定位到已有行时回填 permission/component/path，
+    让重复 seed 能把旧归属纠正过来。默认不回填，避免覆盖管理员的手工改动。
+    """
     for m in cache:
         if m.name == name and m.parent_id == parent_id:
+            if align_fields:
+                m.permission = permission
+                m.component = component
+                m.path = path
             return m
 
     menu = Menu(
@@ -198,6 +207,7 @@ async def seed_master_data(db: AsyncSession) -> None:
     for sort, name, perm in (
         (1, "新建班组", "wms_master_data:team:create"),
         (2, "编辑班组", "wms_master_data:team:edit"),
+        (3, "删除班组", "wms_master_data:team:delete"),
     ):
         await _ensure_menu(
             db, cache, name=name, parent_id=team_page.id, mtype="F",
@@ -214,6 +224,10 @@ async def seed_master_data(db: AsyncSession) -> None:
     for sort, name, perm in (
         (1, "新建人员", "wms_master_data:staff:create"),
         (2, "编辑人员", "wms_master_data:staff:edit"),
+        (3, "批量调组", "wms_master_data:staff:bulk-team"),
+        (4, "维护工序", "wms_master_data:staff:skill"),
+        (5, "维护认证", "wms_master_data:staff:cert"),
+        (6, "离职处置", "wms_master_data:staff:leave"),
     ):
         await _ensure_menu(
             db, cache, name=name, parent_id=staff_page.id, mtype="F",
@@ -249,17 +263,49 @@ async def seed_master_data(db: AsyncSession) -> None:
 
     # P6 业务动作：货主自助建入库预报与出库订单。
     # 门户页面是显式注册的，菜单 component 必须与 router/owner.ts、页面目录三方对齐。
+    # 归属靠 permission 前缀表达：停对应业务域时只收起该入口，不动 /owner 子树。
+    # component 保持 wms_master_data/portal/* 的物理路径，不迁页面目录。
     portal_asn = await _ensure_menu(
         db, cache,
         name="入库预报", parent_id=portal.id, mtype="C",
         path="asn", component="wms_master_data/portal/asn/index",
-        permission="wms_master_data:portal:asn:create", icon="Download", sort=3,
+        permission="wms_inbound:portal:asn:create", icon="Download", sort=3,
+        align_fields=True,
     )
     portal_order = await _ensure_menu(
         db, cache,
         name="出库订单", parent_id=portal.id, mtype="C",
         path="order", component="wms_master_data/portal/order/index",
-        permission="wms_master_data:portal:order:create", icon="Upload", sort=4,
+        permission="wms_outbound:portal:order:create", icon="Upload", sort=4,
+        align_fields=True,
+    )
+    # 商品/库存/账单：三档货主角色都可见，写操作靠 F 按钮与接口权限区分。
+    portal_sku = await _ensure_menu(
+        db, cache,
+        name="商品档案", parent_id=portal.id, mtype="C",
+        path="sku", component="wms_master_data/portal/sku/index",
+        permission="wms_master_data:portal:view", icon="Goods", sort=5,
+    )
+    portal_sku_create = await _ensure_menu(
+        db, cache,
+        name="新建商品", parent_id=portal_sku.id, mtype="F",
+        permission="wms_master_data:sku:create", sort=1,
+    )
+    portal_stock = await _ensure_menu(
+        db, cache,
+        name="库存查询", parent_id=portal.id, mtype="C",
+        path="stock", component="wms_master_data/portal/stock/index",
+        permission="wms_inventory:portal:stock:view", icon="Box", sort=6,
+        align_fields=True,
+    )
+    # 账单归属计费域；wms_billing 插件尚未落地，入口保留空状态页，
+    # 待计费插件上线后由它接管这块菜单的启停。
+    portal_bill = await _ensure_menu(
+        db, cache,
+        name="账单查询", parent_id=portal.id, mtype="C",
+        path="bill", component="wms_master_data/portal/bill/index",
+        permission="wms_billing:portal:bill:view", icon="Tickets", sort=7,
+        align_fields=True,
     )
 
     # ── 角色 ────────────────────────────────────────────
@@ -274,6 +320,11 @@ async def seed_master_data(db: AsyncSession) -> None:
     # 建单是业务动作，只读子账号不给
     await _bind(db, roles["wms_owner_admin"], [portal_asn, portal_order])
     await _bind(db, roles["wms_owner_operator"], [portal_asn, portal_order])
+    # 查询类页面三档都给；商品新建按钮只给主账号与操作员
+    read_menus = [portal_sku, portal_stock, portal_bill]
+    await _bind(db, roles["wms_owner_admin"], read_menus + [portal_sku_create])
+    await _bind(db, roles["wms_owner_operator"], read_menus + [portal_sku_create])
+    await _bind(db, roles["wms_owner_viewer"], read_menus)
 
     # ── 超管只绑后台菜单，不绑门户 ───────────────────────
     # 门户菜单若绑给超管，员工侧边栏会多出一个点不进去的"货主门户"；

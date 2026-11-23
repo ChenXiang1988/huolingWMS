@@ -1,7 +1,7 @@
 """Pydantic schemas (serializers / DTOs) for RBAC models."""
 
 from datetime import datetime
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -129,7 +129,8 @@ class MenuBase(BaseModel):
 
 
 class MenuCreate(MenuBase):
-    pass
+    # 菜单管理页所属端，仅用于后端校验归属，不落库。
+    scope: Literal["admin", "owner"] | None = None
 
 
 class MenuUpdate(BaseModel):
@@ -143,6 +144,8 @@ class MenuUpdate(BaseModel):
     sort: int | None = None
     visible: int | None = None
     status: int | None = None
+    # 菜单管理页所属端，仅用于后端校验归属，不落库。
+    scope: Literal["admin", "owner"] | None = None
 
 
 class MenuOut(MenuBase):

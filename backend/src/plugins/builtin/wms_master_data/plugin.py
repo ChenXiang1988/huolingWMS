@@ -30,6 +30,10 @@ _TABLES = [
     m.WmsSequence.__table__,
     m.WmsTeam.__table__,
     m.WmsStaff.__table__,
+    m.WmsTeamZone.__table__,
+    m.WmsStaffSkill.__table__,
+    m.WmsStaffCert.__table__,
+    m.WmsStaffLog.__table__,
 ]
 
 
@@ -91,6 +95,23 @@ class WmsMasterDataPlugin(PluginInterface):
         app.include_router(router, prefix=settings.API_PREFIX)
         app.include_router(portal_router, prefix=settings.API_PREFIX)
         logger.info("[wms_master_data] registered — routes mounted")
+
+    async def after_user_created(self, user_id: int, username: str) -> None:
+        """用户管理建账号后自动生成人员档案，工号取用户名。"""
+        if username == "admin":
+            return
+        from sqlalchemy.exc import IntegrityError
+
+        from src.core.exceptions import ValidationException
+        from src.plugins.builtin.wms_master_data.service import create_staff
+
+        async with SessionLocal() as db:
+            try:
+                await create_staff(db, code=username, user_id=user_id)
+                await db.commit()
+            except IntegrityError as exc:
+                await db.rollback()
+                raise ValidationException(f"工号 {username} 已占用") from exc
 
     async def before_login(self, payload: dict[str, Any]) -> None:
         """挡住两类不该从后台登录的账号。
